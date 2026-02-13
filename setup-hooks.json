@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager/hooks/on-prompt.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager/hooks/on-tool-use.js",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager/hooks/on-session-start.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager/hooks/on-session-end.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

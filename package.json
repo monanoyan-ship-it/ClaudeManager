@@ -1,0 +1,19 @@
+{
+  "name": "claude-manager",
+  "version": "1.0.0",
+  "description": "AI Assistant Memory & Guidance System for Claude Code",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "mcp": "node src/mcp-server.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "sql.js": "^1.12.0",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
