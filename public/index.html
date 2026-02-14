@@ -27,7 +27,10 @@
   <main id="app">
     <!-- Projects List (Ana Sayfa) -->
     <section id="projectsView" class="view active">
-      <h2>Projeler</h2>
+      <div class="projects-header">
+        <h2>Projeler</h2>
+        <button class="btn-secondary" onclick="app.showMergeModal()">Projeleri Birlestir</button>
+      </div>
       <div id="projectsList" class="cards-grid"></div>
     </section>
 
@@ -166,6 +169,28 @@
           <button type="submit" class="btn-primary">Kaydet</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Merge Modal -->
+  <div class="modal-overlay" id="mergeModal">
+    <div class="modal">
+      <h3>Projeleri Birlestir</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+        Hedef projeyi secin, sonra birlestirilecek projeleri isaretleyin. Isaretlenen projelerin tum verileri hedefe tasinir ve silinir.
+      </p>
+      <div class="form-group">
+        <label>Hedef Proje (veriler buraya tasinacak)</label>
+        <select id="mergeTarget"></select>
+      </div>
+      <div class="form-group">
+        <label>Birlestirilecek Projeler</label>
+        <div id="mergeSourceList" class="merge-source-list"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="app.closeMergeModal()">Iptal</button>
+        <button type="button" class="btn-primary btn-danger-fill" onclick="app.executeMerge()">Birlestir</button>
+      </div>
     </div>
   </div>
 

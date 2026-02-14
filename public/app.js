@@ -67,10 +67,15 @@ const app = {
       return;
     }
     el.innerHTML = data.map(p => `
-      <div class="card" onclick="app.openProject(${p.id}, '${this.esc(p.name)}')">
-        <h3>${this.esc(p.name)}</h3>
-        <div class="path">${this.esc(p.path)}</div>
-        <div class="stats-row">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-click" onclick="app.openProject(${p.id}, '${this.esc(p.name)}')">
+            <h3>${this.esc(p.name)}</h3>
+            <div class="path">${this.esc(p.path)}</div>
+          </div>
+          <button class="btn-sm btn-danger card-delete" onclick="event.stopPropagation(); app.deleteProject(${p.id}, '${this.esc(p.name)}')" title="Projeyi Sil">&#10005;</button>
+        </div>
+        <div class="stats-row" onclick="app.openProject(${p.id}, '${this.esc(p.name)}')">
           <span class="stat-item"><strong>${p.session_count}</strong> session</span>
           <span class="stat-item"><strong>${p.prompt_count}</strong> prompt</span>
           <span class="stat-item"><strong>${p.pattern_count}</strong> pattern</span>
@@ -450,6 +455,84 @@ const app = {
     }
 
     el.innerHTML = html;
+  },
+
+  // --- Delete Project ---
+  async deleteProject(id, name) {
+    if (!confirm(`"${name}" projesi ve TUM verileri silinecek. Emin misiniz?`)) return;
+    await this.api(`/projects/${id}`, { method: 'DELETE' });
+    this.loadProjects();
+  },
+
+  // --- Merge ---
+  mergeProjects: [],
+
+  async showMergeModal() {
+    const { data } = await this.api('/projects');
+    this.mergeProjects = data;
+    if (data.length < 2) {
+      alert('Birlestirme icin en az 2 proje olmali.');
+      return;
+    }
+
+    // Populate target dropdown
+    const targetEl = document.getElementById('mergeTarget');
+    targetEl.innerHTML = data.map(p =>
+      `<option value="${p.id}">${this.esc(p.name)} (${p.prompt_count} prompt, ${p.tool_count} tool)</option>`
+    ).join('');
+
+    // Populate source checkboxes
+    this.updateMergeSources();
+    targetEl.onchange = () => this.updateMergeSources();
+
+    document.getElementById('mergeModal').classList.add('active');
+  },
+
+  updateMergeSources() {
+    const targetId = parseInt(document.getElementById('mergeTarget').value);
+    const el = document.getElementById('mergeSourceList');
+    const sources = this.mergeProjects.filter(p => p.id !== targetId);
+    el.innerHTML = sources.map(p => `
+      <div class="merge-source-item">
+        <label>
+          <input type="checkbox" value="${p.id}" />
+          <span><strong>${this.esc(p.name)}</strong></span>
+          <span class="merge-path">${this.esc(p.path)}</span>
+        </label>
+        <span class="merge-stats">${p.session_count}s / ${p.prompt_count}p / ${p.tool_count}t</span>
+      </div>
+    `).join('');
+  },
+
+  closeMergeModal() {
+    document.getElementById('mergeModal').classList.remove('active');
+  },
+
+  async executeMerge() {
+    const targetId = parseInt(document.getElementById('mergeTarget').value);
+    const checkboxes = document.querySelectorAll('#mergeSourceList input[type="checkbox"]:checked');
+    const sourceIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (!sourceIds.length) {
+      alert('En az bir kaynak proje secin.');
+      return;
+    }
+
+    const targetName = this.mergeProjects.find(p => p.id === targetId)?.name || '';
+    const sourceNames = sourceIds.map(id => this.mergeProjects.find(p => p.id === id)?.name || id).join(', ');
+
+    if (!confirm(`"${sourceNames}" projeleri "${targetName}" ile birlestirilecek. Kaynak projeler silinecek. Emin misiniz?`)) {
+      return;
+    }
+
+    const result = await this.api('/projects/merge', {
+      method: 'POST',
+      body: { target_id: targetId, source_ids: sourceIds }
+    });
+
+    this.closeMergeModal();
+    alert('Projeler basariyla birlestirildi!');
+    this.loadProjects();
   },
 
   // --- Helpers ---

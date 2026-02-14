@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../db/init');
+const { getDb, save } = require('../db/init');
 const logService = require('../services/log-service');
 const patternService = require('../services/pattern-service');
 const analyticsService = require('../services/analytics-service');
@@ -105,6 +105,74 @@ router.get('/projects/:id/analytics', async (req, res, next) => {
       analyticsService.getActivityTimeline(projectId, days)
     ]);
     res.json({ frustration, tools, categories, patternStats, activity });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/projects/:id — Delete a project and all its data
+router.delete('/projects/:id', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const projectId = parseInt(req.params.id);
+
+    const exists = db.exec('SELECT id, name FROM projects WHERE id = ?', [projectId]);
+    if (!exists.length || !exists[0].values.length) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const projectName = exists[0].values[0][1];
+
+    // Delete all related data
+    db.run('DELETE FROM tool_uses WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM prompts WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM patterns WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM sessions WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM projects WHERE id = ?', [projectId]);
+
+    save();
+    res.json({ success: true, deleted: projectName });
+  } catch (err) { next(err); }
+});
+
+// POST /api/projects/merge — Merge multiple projects into one
+router.post('/projects/merge', async (req, res, next) => {
+  try {
+    const { target_id, source_ids } = req.body;
+    if (!target_id || !source_ids || !source_ids.length) {
+      return res.status(400).json({ error: 'target_id and source_ids are required' });
+    }
+    if (source_ids.includes(target_id)) {
+      return res.status(400).json({ error: 'target_id cannot be in source_ids' });
+    }
+
+    const db = await getDb();
+    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns'];
+    const moved = {};
+
+    for (const sourceId of source_ids) {
+      // Verify source project exists
+      const exists = db.exec(`SELECT id, name FROM projects WHERE id = ?`, [sourceId]);
+      if (!exists.length || !exists[0].values.length) continue;
+
+      const sourceName = exists[0].values[0][1];
+      moved[sourceName] = {};
+
+      for (const table of tables) {
+        const countResult = db.exec(
+          `SELECT COUNT(*) FROM ${table} WHERE project_id = ?`, [sourceId]
+        );
+        const count = countResult.length ? countResult[0].values[0][0] : 0;
+        if (count > 0) {
+          db.run(`UPDATE ${table} SET project_id = ? WHERE project_id = ?`,
+            [target_id, sourceId]);
+        }
+        moved[sourceName][table] = count;
+      }
+
+      db.run(`DELETE FROM projects WHERE id = ?`, [sourceId]);
+    }
+
+    save();
+
+    res.json({ success: true, merged: moved });
   } catch (err) { next(err); }
 });
 

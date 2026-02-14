@@ -132,6 +132,13 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px; }
 }
 .card .stat-item strong { color: var(--text); }
 
+/* Card header with delete */
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.card-click { flex: 1; cursor: pointer; }
+.card-delete { opacity: 0.3; transition: opacity 0.15s; flex-shrink: 0; margin-left: 8px; }
+.card:hover .card-delete { opacity: 1; }
+.stats-row { cursor: pointer; }
+
 /* Breadcrumb */
 .breadcrumb {
   margin-bottom: 16px;
@@ -444,6 +451,37 @@ button { cursor: pointer; }
 /* Success indicator */
 .success-icon { color: var(--success); }
 .failure-icon { color: var(--danger); }
+
+/* Projects header */
+.projects-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* Merge modal */
+.merge-source-list {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.merge-source-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.merge-source-item:last-child { border-bottom: none; }
+.merge-source-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; }
+.merge-source-item .merge-path { font-size: 11px; color: var(--text-secondary); }
+.merge-source-item .merge-stats { font-size: 11px; color: var(--text-secondary); margin-left: auto; }
+.btn-danger-fill { background: var(--danger); color: white; border: none; }
+.btn-danger-fill:hover { background: var(--danger-hover); }
 
 /* Responsive */
 @media (max-width: 768px) {
