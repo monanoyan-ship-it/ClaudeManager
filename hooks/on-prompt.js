@@ -2,7 +2,7 @@
 // UserPromptSubmit hook - reads stdin, POSTs to ClaudeManager API, writes stdout
 const http = require('http');
 
-const API_URL = 'http://127.0.0.1:3847/api/hooks/prompt';
+const API_URL = 'http://127.0.0.1:41847/api/hooks/prompt';
 
 function readStdin() {
   return new Promise((resolve) => {

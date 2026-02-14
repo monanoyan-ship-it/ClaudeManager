@@ -14,14 +14,13 @@ Claude Code her session'da sıfırdan başlıyor. KURALLAR.md ve memory dosyalar
 - **Hook'lar (pasif)** - Otomatik loglama, Claude'u bloklamadan
 - **MCP Server (aktif)** - Claude'un kendisi sorgulayabilir: "bu proje için kurallar ne?", "daha önce bunu nasıl yapmıştım?"
 
-## Ana Proje: SecretCustomer
+## Amaç
 
-Bu araç öncelikle `SecretCustomer` projesi için oluşturuldu:
-- **Repo:** `C:\Users\Ahmet\source\repos\monanoyan-ship-it\ScretCustomer`
-- **Stack:** ASP.NET Core 9.0 + EF Core + PostgreSQL + KnockoutJS
-- **Özellikler:** Gizli müşteri değerlendirme sistemi, raporlama, bildirimler, PDF export
-- SecretCustomer projesi büyük ve kuralları çok - KURALLAR.md 30+ bölüm, MEMORY.md 200+ satır
-- Bu kuralların hepsini her session okumak yetmiyor, geçmiş deneyim de lazım
+ClaudeManager **proje-agnostik** bir sistemdir. Tüm projelerde Claude Code kullanırken merkezi bir rehber ve hafıza görevi görür. Hangi projeden hangi prompt geldi, hangi hatalar yapıldı, hangi pattern'ler öğrenildi — hepsini proje bazlı ama tek bir merkezden takip eder.
+
+- Her proje `cwd` (çalışma dizini) üzerinden otomatik tespit edilir ve ayrı ayrı loglanır
+- Pattern'ler ve kurallar proje bazlı tutulur, projeler arası da paylaşılabilir
+- İlk ve en büyük kullanım alanı `SecretCustomer` projesi olsa da, sistem herhangi bir projeyle çalışacak şekilde tasarlandı
 
 ## Mimari
 
@@ -44,7 +43,7 @@ Claude Code Session
         └── get_context → Zengin proje context'i
             │
             ▼
-    ClaudeManager API (Express, port 3847)
+    ClaudeManager API (Express, port 41847)
             │
             ▼
     SQLite DB (data/claude_manager.db)
@@ -67,7 +66,7 @@ Claude Code Session
 ```
 ClaudeManager/
 ├── src/
-│   ├── index.js              # Express API entry point (port 3847)
+│   ├── index.js              # Express API entry point (port 41847)
 │   │                           GET /health, GET /api/stats, /api/hooks/*
 │   │
 │   ├── mcp-server.js         # MCP Server (stdio transport)
@@ -122,7 +121,7 @@ ClaudeManager/
 ├── data/                     # SQLite DB dosyası burada oluşur (gitignore'd)
 ├── setup-hooks.json          # ~/.claude/settings.json'a kopyalanacak hook config
 ├── Dockerfile                # node:20-slim based
-├── docker-compose.yml        # Port 3847, volume for DB
+├── docker-compose.yml        # Port 41847, volume for DB
 └── SETUP.md                  # Kurulum adımları
 ```
 
@@ -175,7 +174,7 @@ claude mcp add --transport stdio claude-manager -- node C:/Users/Ahmet/source/re
 
 ### 4. Doğrula
 ```bash
-curl http://127.0.0.1:3847/health
+curl http://127.0.0.1:41847/health
 # {"status":"ok","service":"claude-manager","version":"1.0.0"}
 ```
 
@@ -203,7 +202,7 @@ curl http://127.0.0.1:3847/health
 
 ## Geliştirme Notları
 
-- `npm start` → Express API (port 3847)
+- `npm start` → Express API (port 41847)
 - `npm run mcp` → MCP Server (stdio, test için)
 - `npm run dev` → Express API with --watch
 - DB dosyası: `data/claude_manager.db` (gitignore'd, auto-save 5sn)

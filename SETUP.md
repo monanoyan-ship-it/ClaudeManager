@@ -12,7 +12,7 @@ Veya Docker ile:
 docker-compose up -d
 ```
 
-API http://127.0.0.1:3847 adresinde çalışacak.
+API http://127.0.0.1:41847 adresinde çalışacak.
 
 ## 2. MCP Server Kaydet
 
@@ -35,7 +35,7 @@ Veya mevcut settings.json'a "hooks" anahtarını ekle.
 
 1. API çalışıyor mu?
    ```bash
-   curl http://127.0.0.1:3847/health
+   curl http://127.0.0.1:41847/health
    ```
 
 2. Claude Code'u aç → SessionStart hook tetiklenmeli

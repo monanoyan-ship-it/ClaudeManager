@@ -2,7 +2,7 @@
 // SessionStart hook - reads stdin, POSTs to ClaudeManager API, returns context
 const http = require('http');
 
-const API_URL = 'http://127.0.0.1:3847/api/hooks/session-start';
+const API_URL = 'http://127.0.0.1:41847/api/hooks/session-start';
 
 function readStdin() {
   return new Promise((resolve) => {

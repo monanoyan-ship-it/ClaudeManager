@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   claude-manager:
     build: .
     container_name: claude-manager
     ports:
-      - "3847:3847"
+      - "41847:41847"
     volumes:
       - claude-manager-data:/app/data
     environment:
-      - PORT=3847
+      - PORT=41847
       - DB_PATH=/app/data/claude_manager.db
     restart: unless-stopped
 

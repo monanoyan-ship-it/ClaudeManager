@@ -2,7 +2,7 @@
 // SessionEnd hook - reads stdin, POSTs to ClaudeManager API
 const http = require('http');
 
-const API_URL = 'http://127.0.0.1:3847/api/hooks/session-end';
+const API_URL = 'http://127.0.0.1:41847/api/hooks/session-end';
 
 function readStdin() {
   return new Promise((resolve) => {

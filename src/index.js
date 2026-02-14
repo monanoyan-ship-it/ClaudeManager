@@ -2,7 +2,7 @@ const express = require('express');
 const { getDb, startAutoSave, stopAutoSave } = require('./db/init');
 const hookHandler = require('./hook-handler');
 
-const PORT = process.env.PORT || 3847;
+const PORT = process.env.PORT || 41847;
 
 async function main() {
   // Initialize database
