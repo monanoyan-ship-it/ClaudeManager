@@ -76,6 +76,54 @@ class PatternService {
     }));
   }
 
+  async getPatternById(patternId) {
+    const db = await getDb();
+    const result = db.exec(
+      `SELECT id, project_id, type, title, description, confidence, times_referenced, is_active, created_at, updated_at
+       FROM patterns WHERE id = ?`,
+      [patternId]
+    );
+    if (!result.length || !result[0].values.length) return null;
+    const row = result[0].values[0];
+    return {
+      id: row[0], project_id: row[1], type: row[2], title: row[3],
+      description: row[4], confidence: row[5], times_referenced: row[6],
+      is_active: row[7], created_at: row[8], updated_at: row[9]
+    };
+  }
+
+  async updatePattern(patternId, updates) {
+    const db = await getDb();
+    const fields = [];
+    const params = [];
+
+    if (updates.type !== undefined) { fields.push('type = ?'); params.push(updates.type); }
+    if (updates.title !== undefined) { fields.push('title = ?'); params.push(updates.title); }
+    if (updates.description !== undefined) { fields.push('description = ?'); params.push(updates.description); }
+    if (updates.confidence !== undefined) { fields.push('confidence = ?'); params.push(updates.confidence); }
+
+    if (fields.length === 0) return;
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(patternId);
+
+    db.run(`UPDATE patterns SET ${fields.join(', ')} WHERE id = ?`, params);
+
+    // Update FTS
+    if (updates.title || updates.description) {
+      try {
+        db.run(`DELETE FROM patterns_fts WHERE rowid = ?`, [patternId]);
+        const pattern = await this.getPatternById(patternId);
+        if (pattern) {
+          db.run(`INSERT INTO patterns_fts (rowid, title, description) VALUES (?, ?, ?)`,
+            [patternId, pattern.title, pattern.description || '']);
+        }
+      } catch (e) { /* non-critical */ }
+    }
+
+    save();
+  }
+
   async deactivatePattern(patternId) {
     const db = await getDb();
     db.run(`UPDATE patterns SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [patternId]);

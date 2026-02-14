@@ -1,14 +1,16 @@
 const express = require('express');
 const logService = require('./services/log-service');
 const contextService = require('./services/context-service');
+const { normalizePath } = require('./utils/path-normalizer');
 
 const router = express.Router();
 
 // Helper: extract project info from cwd
 function extractProjectInfo(body) {
   const cwd = body.cwd || process.cwd();
-  const name = cwd.split(/[\\/]/).pop();
-  return { name, path: cwd };
+  const normalizedCwd = normalizePath(cwd);
+  const name = normalizedCwd.split('/').pop();
+  return { name, path: normalizedCwd };
 }
 
 // POST /api/hooks/prompt - UserPromptSubmit

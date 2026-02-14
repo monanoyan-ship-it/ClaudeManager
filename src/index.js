@@ -1,6 +1,9 @@
+const path = require('path');
 const express = require('express');
 const { getDb, startAutoSave, stopAutoSave } = require('./db/init');
 const hookHandler = require('./hook-handler');
+const apiRoutes = require('./routes/api-routes');
+const errorHandler = require('./middleware/error-handler');
 
 const PORT = process.env.PORT || 41847;
 
@@ -12,15 +15,21 @@ async function main() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  // Serve static dashboard files
+  app.use(express.static(path.join(__dirname, '..', 'public')));
+
   // Health check
   app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'claude-manager', version: '1.0.0' });
+    res.json({ status: 'ok', service: 'claude-manager', version: '2.0.0' });
   });
 
   // Hook API routes
   app.use('/api/hooks', hookHandler);
 
-  // Stats endpoint
+  // REST API routes
+  app.use('/api', apiRoutes);
+
+  // Stats endpoint (kept for backwards compatibility)
   app.get('/api/stats', async (req, res) => {
     try {
       const db = await getDb();
@@ -44,8 +53,12 @@ async function main() {
     }
   });
 
+  // Global error handler
+  app.use(errorHandler);
+
   app.listen(PORT, () => {
     console.log(`ClaudeManager API running on port ${PORT}`);
+    console.log(`Dashboard: http://127.0.0.1:${PORT}/`);
   });
 
   // Graceful shutdown

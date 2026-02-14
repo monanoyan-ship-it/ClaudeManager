@@ -9,7 +9,7 @@ const { getDb, startAutoSave, stopAutoSave } = require('./db/init');
 
 const server = new McpServer({
   name: 'claude-manager',
-  version: '1.0.0'
+  version: '2.0.0'
 });
 
 // Helper: resolve project ID from name or path
@@ -64,12 +64,13 @@ server.tool(
 // Tool: get_patterns
 server.tool(
   'get_patterns',
-  'Get learned patterns and rules for a project',
+  'Get learned patterns and rules for a project. Use detailed=true for full descriptions.',
   {
     project: z.string().describe('Project name or path'),
-    type: z.enum(['rule', 'pattern', 'preference', 'mistake']).optional().describe('Filter by pattern type')
+    type: z.enum(['rule', 'pattern', 'preference', 'mistake']).optional().describe('Filter by pattern type'),
+    detailed: z.boolean().default(false).describe('If false, returns compact list (titles + IDs only). If true, includes full descriptions.')
   },
-  async ({ project, type }) => {
+  async ({ project, type, detailed }) => {
     const proj = await resolveProject(project);
     if (!proj) {
       return { content: [{ type: 'text', text: `Project "${project}" not found` }] };
@@ -80,9 +81,17 @@ server.tool(
       return { content: [{ type: 'text', text: `No patterns found for "${proj.name}"` }] };
     }
 
-    const formatted = patterns.map(p =>
-      `[${p.type}] ${p.title}${p.description ? '\n  ' + p.description : ''} (confidence: ${p.confidence}, refs: ${p.times_referenced})`
-    ).join('\n\n');
+    let formatted;
+    if (detailed) {
+      formatted = patterns.map(p =>
+        `[${p.type}] ${p.title}${p.description ? '\n  ' + p.description : ''} (confidence: ${p.confidence}, refs: ${p.times_referenced})`
+      ).join('\n\n');
+    } else {
+      formatted = patterns.map(p =>
+        `[${p.type}] #${p.id}: ${p.title} (c:${p.confidence})`
+      ).join('\n');
+      formatted += '\n\nUse detailed=true for full descriptions.';
+    }
 
     return { content: [{ type: 'text', text: `Patterns for "${proj.name}" (${patterns.length}):\n\n${formatted}` }] };
   }
@@ -141,13 +150,14 @@ server.tool(
 // Tool: get_history
 server.tool(
   'get_history',
-  'Search interaction history for a project',
+  'Search interaction history for a project. Use detailed=true for longer content excerpts.',
   {
     project: z.string().describe('Project name or path'),
     query: z.string().describe('Search query'),
-    limit: z.number().default(10).describe('Max results to return')
+    limit: z.number().default(10).describe('Max results to return'),
+    detailed: z.boolean().default(false).describe('If false, returns short excerpts (50 chars). If true, returns full content (300 chars).')
   },
-  async ({ project, query, limit }) => {
+  async ({ project, query, limit, detailed }) => {
     const proj = await resolveProject(project);
     if (!proj) {
       return { content: [{ type: 'text', text: `Project "${project}" not found` }] };
@@ -158,40 +168,48 @@ server.tool(
       return { content: [{ type: 'text', text: `No history found for query "${query}" in project "${proj.name}"` }] };
     }
 
+    const maxLen = detailed ? 300 : 80;
     const formatted = results.map(r =>
-      `[${r.created_at}] ${r.role}: ${r.content.substring(0, 300)}${r.content.length > 300 ? '...' : ''}`
+      `[${r.created_at}] ${r.role}: ${r.content.substring(0, maxLen)}${r.content.length > maxLen ? '...' : ''}`
     ).join('\n\n');
 
-    return { content: [{ type: 'text', text: `History for "${proj.name}" matching "${query}" (${results.length} results):\n\n${formatted}` }] };
+    let footer = '';
+    if (!detailed) footer = '\n\nUse detailed=true for longer excerpts.';
+
+    return { content: [{ type: 'text', text: `History for "${proj.name}" matching "${query}" (${results.length} results):\n\n${formatted}${footer}` }] };
   }
 );
 
 // Tool: search_logs
 server.tool(
   'search_logs',
-  'Full-text search across all logs, optionally filtered by project and date range',
+  'Full-text search across all logs, optionally filtered by project and date range. Use detailed=true for longer excerpts.',
   {
     query: z.string().describe('Search query (full-text)'),
     project: z.string().optional().describe('Optional project name to filter'),
     start_date: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     end_date: z.string().optional().describe('End date (YYYY-MM-DD)'),
-    limit: z.number().default(20).describe('Max results')
+    limit: z.number().default(20).describe('Max results'),
+    detailed: z.boolean().default(false).describe('If false, returns short excerpts. If true, returns longer content.')
   },
-  async ({ query, project, start_date, end_date, limit }) => {
+  async ({ query, project, start_date, end_date, limit, detailed }) => {
     let projectId = null;
     if (project) {
       const proj = await resolveProject(project);
       if (proj) projectId = proj.id;
     }
 
+    const maxLen = detailed ? 400 : 100;
+
     if (start_date && end_date && projectId) {
       const results = await searchService.searchByDateRange(projectId, start_date, end_date, limit);
-      // Filter by query
       const filtered = results.filter(r => r.content.toLowerCase().includes(query.toLowerCase()));
       const formatted = filtered.map(r =>
-        `[${r.created_at}] ${r.role}: ${r.content.substring(0, 200)}`
+        `[${r.created_at}] ${r.role}: ${r.content.substring(0, maxLen)}${r.content.length > maxLen ? '...' : ''}`
       ).join('\n\n');
-      return { content: [{ type: 'text', text: filtered.length > 0 ? formatted : 'No results found.' }] };
+      let text = filtered.length > 0 ? formatted : 'No results found.';
+      if (!detailed && filtered.length > 0) text += '\n\nUse detailed=true for longer excerpts.';
+      return { content: [{ type: 'text', text }] };
     }
 
     const results = await searchService.searchPrompts(query, projectId, limit);
@@ -200,10 +218,13 @@ server.tool(
     }
 
     const formatted = results.map(r =>
-      `[${r.created_at}] [${r.project_name || 'unknown'}] ${r.role}: ${r.content.substring(0, 200)}`
+      `[${r.created_at}] [${r.project_name || 'unknown'}] ${r.role}: ${r.content.substring(0, maxLen)}${r.content.length > maxLen ? '...' : ''}`
     ).join('\n\n');
 
-    return { content: [{ type: 'text', text: `Search results for "${query}" (${results.length}):\n\n${formatted}` }] };
+    let footer = '';
+    if (!detailed) footer = '\n\nUse detailed=true for longer excerpts.';
+
+    return { content: [{ type: 'text', text: `Search results for "${query}" (${results.length}):\n\n${formatted}${footer}` }] };
   }
 );
 

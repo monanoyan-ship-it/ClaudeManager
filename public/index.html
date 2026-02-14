@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClaudeManager Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>ClaudeManager</h1>
+      <span class="version">v2.0</span>
+    </div>
+    <div class="header-right">
+      <div class="search-box">
+        <input type="text" id="globalSearch" placeholder="Ara..." />
+        <button onclick="app.globalSearch()">Ara</button>
+      </div>
+      <button class="theme-toggle" onclick="app.toggleTheme()" title="Tema degistir">
+        <span id="themeIcon">&#9790;</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- Projects List (Ana Sayfa) -->
+    <section id="projectsView" class="view active">
+      <h2>Projeler</h2>
+      <div id="projectsList" class="cards-grid"></div>
+    </section>
+
+    <!-- Project Detail -->
+    <section id="projectView" class="view">
+      <div class="breadcrumb">
+        <a href="#" onclick="app.showProjects(); return false;">Projeler</a>
+        <span> / </span>
+        <span id="projectName"></span>
+      </div>
+
+      <div class="project-stats" id="projectStats"></div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="overview" onclick="app.switchTab('overview')">Genel Bakis</button>
+        <button class="tab" data-tab="sessions" onclick="app.switchTab('sessions')">Session'lar</button>
+        <button class="tab" data-tab="prompts" onclick="app.switchTab('prompts')">Prompt'lar</button>
+        <button class="tab" data-tab="patterns" onclick="app.switchTab('patterns')">Pattern'ler</button>
+        <button class="tab" data-tab="tools" onclick="app.switchTab('tools')">Tool Kullanimi</button>
+        <button class="tab" data-tab="analytics" onclick="app.switchTab('analytics')">Analitik</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div class="tab-content active" id="tab-overview">
+        <div class="overview-grid" id="overviewContent"></div>
+      </div>
+
+      <!-- Sessions Tab -->
+      <div class="tab-content" id="tab-sessions">
+        <div id="sessionsList"></div>
+        <div class="pagination" id="sessionsPagination"></div>
+      </div>
+
+      <!-- Prompts Tab -->
+      <div class="tab-content" id="tab-prompts">
+        <div class="filters">
+          <select id="categoryFilter" onchange="app.loadPrompts()">
+            <option value="">Tum Kategoriler</option>
+            <option value="feature_request">Feature Request</option>
+            <option value="bug_fix">Bug Fix</option>
+            <option value="question">Question</option>
+            <option value="refactor">Refactor</option>
+            <option value="feedback">Feedback</option>
+            <option value="general">General</option>
+          </select>
+          <input type="text" id="promptSearch" placeholder="Prompt'larda ara..." />
+          <button onclick="app.loadPrompts()">Filtrele</button>
+        </div>
+        <div id="promptsList"></div>
+        <div class="pagination" id="promptsPagination"></div>
+      </div>
+
+      <!-- Patterns Tab -->
+      <div class="tab-content" id="tab-patterns">
+        <div class="patterns-header">
+          <div class="pattern-filters">
+            <button class="pill active" data-type="" onclick="app.filterPatterns('')">Tumu</button>
+            <button class="pill rule" data-type="rule" onclick="app.filterPatterns('rule')">Kurallar</button>
+            <button class="pill mistake" data-type="mistake" onclick="app.filterPatterns('mistake')">Hatalar</button>
+            <button class="pill preference" data-type="preference" onclick="app.filterPatterns('preference')">Tercihler</button>
+            <button class="pill pattern" data-type="pattern" onclick="app.filterPatterns('pattern')">Pattern'ler</button>
+          </div>
+          <button class="btn-primary" onclick="app.showPatternModal()">+ Yeni Pattern</button>
+        </div>
+        <div id="patternsList"></div>
+      </div>
+
+      <!-- Tools Tab -->
+      <div class="tab-content" id="tab-tools">
+        <div id="toolsList"></div>
+        <div class="pagination" id="toolsPagination"></div>
+      </div>
+
+      <!-- Analytics Tab -->
+      <div class="tab-content" id="tab-analytics">
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>Frustration Trendi (Son 30 Gun)</h3>
+            <canvas id="frustrationChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Tool Kullanim Dagilimi</h3>
+            <canvas id="toolChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Prompt Kategori Dagilimi</h3>
+            <canvas id="categoryChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Aktivite (Son 30 Gun)</h3>
+            <canvas id="activityChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Search Results -->
+    <section id="searchView" class="view">
+      <div class="breadcrumb">
+        <a href="#" onclick="app.showProjects(); return false;">Projeler</a>
+        <span> / Arama Sonuclari</span>
+      </div>
+      <div id="searchResults"></div>
+    </section>
+  </main>
+
+  <!-- Pattern Modal -->
+  <div class="modal-overlay" id="patternModal">
+    <div class="modal">
+      <h3 id="modalTitle">Yeni Pattern</h3>
+      <form id="patternForm" onsubmit="app.savePattern(event)">
+        <input type="hidden" id="patternId" />
+        <div class="form-group">
+          <label>Tip</label>
+          <select id="patternType" required>
+            <option value="rule">Kural</option>
+            <option value="mistake">Hata</option>
+            <option value="preference">Tercih</option>
+            <option value="pattern">Pattern</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Baslik</label>
+          <input type="text" id="patternTitle" required />
+        </div>
+        <div class="form-group">
+          <label>Aciklama</label>
+          <textarea id="patternDescription" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Guven Skoru: <span id="confidenceValue">1.0</span></label>
+          <input type="range" id="patternConfidence" min="0" max="1" step="0.1" value="1" oninput="document.getElementById('confidenceValue').textContent = this.value" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="app.closePatternModal()">Iptal</button>
+          <button type="submit" class="btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

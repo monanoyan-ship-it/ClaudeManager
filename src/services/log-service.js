@@ -1,14 +1,16 @@
 const { getDb, save } = require('../db/init');
 const { categorizePrompt, extractTags } = require('../utils/analyzer');
+const { normalizePath } = require('../utils/path-normalizer');
 
 class LogService {
   async ensureProject(name, projectPath) {
     const db = await getDb();
-    const existing = db.exec(`SELECT id FROM projects WHERE path = ?`, [projectPath]);
+    const normalizedPath = normalizePath(projectPath);
+    const existing = db.exec(`SELECT id FROM projects WHERE path = ?`, [normalizedPath]);
     if (existing.length > 0 && existing[0].values.length > 0) {
       return existing[0].values[0][0];
     }
-    db.run(`INSERT INTO projects (name, path) VALUES (?, ?)`, [name, projectPath]);
+    db.run(`INSERT INTO projects (name, path) VALUES (?, ?)`, [name, normalizedPath]);
     save();
     const result = db.exec(`SELECT last_insert_rowid()`);
     return result[0].values[0][0];
@@ -109,6 +111,102 @@ class LogService {
     if (!result.length) return { session_count: 0, prompt_count: 0, tool_count: 0 };
     const row = result[0].values[0];
     return { session_count: row[0], prompt_count: row[1], tool_count: row[2] };
+  }
+  async getPromptsWithPagination(projectId, page = 1, limit = 20, filters = {}) {
+    const db = await getDb();
+    const offset = (page - 1) * limit;
+    let whereClauses = ['p.project_id = ?'];
+    const params = [projectId];
+
+    if (filters.category) {
+      whereClauses.push('p.category = ?');
+      params.push(filters.category);
+    }
+    if (filters.startDate) {
+      whereClauses.push('p.created_at >= ?');
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      whereClauses.push('p.created_at <= ?');
+      params.push(filters.endDate);
+    }
+    if (filters.search) {
+      whereClauses.push('p.content LIKE ?');
+      params.push(`%${filters.search}%`);
+    }
+
+    const where = whereClauses.join(' AND ');
+
+    const countResult = db.exec(`SELECT COUNT(*) FROM prompts p WHERE ${where}`, params);
+    const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
+
+    const result = db.exec(
+      `SELECT p.id, p.role, p.content, p.category, p.tags, p.created_at, s.session_id
+       FROM prompts p
+       LEFT JOIN sessions s ON s.id = p.session_id
+       WHERE ${where}
+       ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    const data = result.length > 0 ? result[0].values.map(row => ({
+      id: row[0], role: row[1], content: row[2], category: row[3],
+      tags: row[4], created_at: row[5], session_id: row[6]
+    })) : [];
+
+    return { data, total, page, limit };
+  }
+
+  async getSessionsWithPagination(projectId, page = 1, limit = 20) {
+    const db = await getDb();
+    const offset = (page - 1) * limit;
+
+    const countResult = db.exec(
+      `SELECT COUNT(*) FROM sessions WHERE project_id = ?`, [projectId]
+    );
+    const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
+
+    const result = db.exec(
+      `SELECT s.id, s.session_id, s.started_at, s.ended_at, s.summary,
+              (SELECT COUNT(*) FROM prompts WHERE session_id = s.id) as prompt_count,
+              (SELECT COUNT(*) FROM tool_uses WHERE session_id = s.id) as tool_count
+       FROM sessions s
+       WHERE s.project_id = ?
+       ORDER BY s.started_at DESC LIMIT ? OFFSET ?`,
+      [projectId, limit, offset]
+    );
+
+    const data = result.length > 0 ? result[0].values.map(row => ({
+      id: row[0], session_id: row[1], started_at: row[2], ended_at: row[3],
+      summary: row[4], prompt_count: row[5], tool_count: row[6]
+    })) : [];
+
+    return { data, total, page, limit };
+  }
+
+  async getToolUsesWithPagination(projectId, page = 1, limit = 20) {
+    const db = await getDb();
+    const offset = (page - 1) * limit;
+
+    const countResult = db.exec(
+      `SELECT COUNT(*) FROM tool_uses WHERE project_id = ?`, [projectId]
+    );
+    const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
+
+    const result = db.exec(
+      `SELECT id, tool_name, file_path, success, created_at
+       FROM tool_uses
+       WHERE project_id = ?
+       ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [projectId, limit, offset]
+    );
+
+    const data = result.length > 0 ? result[0].values.map(row => ({
+      id: row[0], tool_name: row[1], file_path: row[2],
+      success: row[3], created_at: row[4]
+    })) : [];
+
+    return { data, total, page, limit };
   }
 }
 

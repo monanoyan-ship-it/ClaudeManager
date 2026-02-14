@@ -1,6 +1,6 @@
 {
   "name": "claude-manager",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "AI Assistant Memory & Guidance System for Claude Code",
   "main": "src/index.js",
   "scripts": {
