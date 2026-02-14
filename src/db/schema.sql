@@ -56,6 +56,34 @@ CREATE TABLE IF NOT EXISTS patterns (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Phases (roadmap top-level groups)
+CREATE TABLE IF NOT EXISTS phases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER REFERENCES projects(id),
+  phase_no TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT DEFAULT 'planned',
+  sort_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tasks (work items under phases)
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phase_id INTEGER REFERENCES phases(id),
+  project_id INTEGER REFERENCES projects(id),
+  task_no TEXT NOT NULL,
+  title TEXT NOT NULL,
+  detail TEXT,
+  risks TEXT,
+  status TEXT DEFAULT 'planned',
+  completed_at DATETIME,
+  sort_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
@@ -66,3 +94,6 @@ CREATE INDEX IF NOT EXISTS idx_tool_uses_session ON tool_uses(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_uses_project ON tool_uses(project_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_project ON patterns(project_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(type);
+CREATE INDEX IF NOT EXISTS idx_phases_project ON phases(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_phase ON tasks(phase_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);

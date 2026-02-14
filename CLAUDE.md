@@ -53,7 +53,9 @@ Claude Code Session
         |-- sessions - Session loglari
         |-- prompts - Tum prompt'lar (FTS5 index'li)
         |-- tool_uses - Tool cagrilari
-        +-- patterns - Ogrenilen kurallar/pattern'ler/hatalar
+        |-- patterns - Ogrenilen kurallar/pattern'ler/hatalar
+        |-- phases - Yol haritasi fazlari
+        +-- tasks - Faz altindaki gorevler
 ```
 
 ## Teknoloji Secimleri
@@ -82,13 +84,13 @@ ClaudeManager/
 |   |-- routes/
 |   |   +-- api-routes.js     # REST API - CRUD endpoints
 |   |                           /api/projects, /api/patterns, /api/search
-|   |                           Sayfalama, filtreleme, analitik
+|   |                           Sayfalama, filtreleme, analitik, yol haritasi
 |   |
 |   |-- middleware/
 |   |   +-- error-handler.js  # Global Express error handler
 |   |
 |   |-- db/
-|   |   |-- schema.sql        # 5 tablo + FTS5 + index tanimlari
+|   |   |-- schema.sql        # 7 tablo + FTS5 + index tanimlari
 |   |   +-- init.js           # sql.js DB baglantisi, auto-save (5sn)
 |   |
 |   |-- services/
@@ -96,7 +98,8 @@ ClaudeManager/
 |   |   |-- pattern-service.js # Pattern CRUD + FTS arama + update
 |   |   |-- context-service.js # Zengin context olusturma
 |   |   |-- search-service.js  # Full-text + tarih bazli arama
-|   |   +-- analytics-service.js # Analitik sorgulari (frustration, tool, kategori)
+|   |   |-- analytics-service.js # Analitik sorgulari (frustration, tool, kategori)
+|   |   +-- plan-service.js    # Yol haritasi CRUD + XML import
 |   |
 |   +-- utils/
 |       |-- analyzer.js       # Prompt analiz araclari
@@ -134,6 +137,15 @@ ClaudeManager/
 | PUT | /api/patterns/:id | Pattern guncelle |
 | DELETE | /api/patterns/:id | Pattern deaktif et |
 | GET | /api/search?q=... | Full-text arama |
+| GET | /api/projects/:id/roadmap | Tam yol haritasi (fazlar + gorevler) |
+| GET | /api/projects/:id/roadmap/stats | Yol haritasi istatistikleri |
+| POST | /api/projects/:id/phases | Yeni faz olustur |
+| PUT | /api/phases/:id | Faz guncelle |
+| DELETE | /api/phases/:id | Faz sil (gorevleri ile birlikte) |
+| POST | /api/phases/:id/tasks | Yeni gorev olustur |
+| PUT | /api/tasks/:id | Gorev guncelle |
+| DELETE | /api/tasks/:id | Gorev sil |
+| POST | /api/projects/:id/roadmap/import | XML'den yol haritasi import |
 
 Sayfalama: `?page=1&limit=20`, response: `{ data: [...], total, page, limit }`
 
@@ -148,11 +160,65 @@ Dashboard: `http://127.0.0.1:41847/`
   - Session'lar: tarih, sure, prompt sayisi
   - Prompt'lar: tablo + filtreler (kategori, arama). Frustration skoru renk koduyla
   - Pattern'ler: tip bazli gruplama + CRUD (ekle/duzenle/sil modal)
+  - Yol Haritasi: faz/gorev yonetimi, ilerleme cubugu, XML import, durum dongusu
   - Tool Kullanimi: tool adi, dosya, basari durumu
   - Analitik: 4 grafik (frustration trend, tool dagilimi, kategori, aktivite)
 - Global arama
 - Dark/light mode (sistem tercihine gore + toggle)
 - Responsive tasarim
+
+## Yol Haritasi (Plan/Roadmap) Sistemi
+
+ClaudeManager projelerin yol haritalarini Faz > Gorev hiyerarsisi ile takip eder. Claude Code session basinda guide endpoint'inden mevcut faz ve acik gorevleri gorur, nerede kaldigini bilir.
+
+**Veri yapisi:** `phases` (fazlar) ve `tasks` (gorevler) tablolari. Her faz bir projeye, her gorev bir faza bagli.
+
+**Durum degerleri:**
+- `planned` — Planli (varsayilan)
+- `in_progress` — Devam ediyor
+- `completed` — Tamamlandi
+- `cancelled` — Iptal (sadece gorevlerde)
+
+**Ornek API kullanimi:**
+```bash
+# Yol haritasini oku
+curl -s http://127.0.0.1:41847/api/projects/PROJE_ID/roadmap
+
+# Yeni faz olustur
+curl -X POST http://127.0.0.1:41847/api/projects/PROJE_ID/phases \
+  -H "Content-Type: application/json" \
+  -d '{"phase_no":"1","title":"Temel Altyapi"}'
+
+# Faza gorev ekle
+curl -X POST http://127.0.0.1:41847/api/phases/FAZ_ID/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"task_no":"1.1","title":"Solution yapisini olustur","detail":"...","risks":"..."}'
+
+# Gorev durumunu guncelle
+curl -X PUT http://127.0.0.1:41847/api/tasks/GOREV_ID \
+  -H "Content-Type: application/json" \
+  -d '{"status":"completed"}'
+
+# XML'den import (callcenter yol_haritasi.xml formati)
+curl -X POST http://127.0.0.1:41847/api/projects/PROJE_ID/roadmap/import \
+  -H "Content-Type: application/json" \
+  -d '{"xml":"<Faz no=\"1\" ad=\"...\">...</Faz>"}'
+```
+
+**XML import formati:**
+```xml
+<Faz no="1" ad="Temel Altyapi" durum="tamamlandi">
+  <Gorev no="1.1" durum="tamamlandi">
+    <Ad>Solution yapisini olustur</Ad>
+    <Detay>- detay satirlari</Detay>
+    <Riskler>- risk satirlari</Riskler>
+  </Gorev>
+</Faz>
+```
+
+**Guide entegrasyonu:** `/api/guide?cwd=...` endpoint'i yol haritasi varsa otomatik olarak mevcut faz, ilerleme yuzdesi ve acik gorevleri gosterir.
+
+**Dashboard:** Proje detay sayfasinda "Yol Haritasi" tab'i ile gorev yonetimi, durum degistirme, faz/gorev ekleme ve XML import yapilabilir.
 
 ## Hook Formati (Claude Code Spesifikasyonu)
 
@@ -211,13 +277,14 @@ curl http://127.0.0.1:41847/health
 ## Mevcut Durum
 
 - [x] Proje altyapisi (package.json, Docker, gitignore)
-- [x] SQLite veritabani (5 tablo + FTS5 + indexler)
-- [x] Servis katmani (log, pattern, context, search, analyzer, analytics)
+- [x] SQLite veritabani (7 tablo + FTS5 + indexler)
+- [x] Servis katmani (log, pattern, context, search, analyzer, analytics, plan)
 - [x] Hook Handler (4 endpoint)
 - [x] MCP Server (7 tool, progressive disclosure)
 - [x] Hook script'leri (4 adet, Node.js, Windows uyumlu)
-- [x] REST API (11 endpoint, sayfalama, filtreleme)
-- [x] Web Dashboard (Turkce, dark/light mode, Chart.js)
+- [x] REST API (21 endpoint, sayfalama, filtreleme, yol haritasi)
+- [x] Web Dashboard (Turkce, dark/light mode, Chart.js, yol haritasi)
+- [x] Yol Haritasi sistemi (Faz > Gorev, XML import, guide entegrasyonu)
 - [x] Path normalizasyonu (duplicate proje onleme)
 - [x] Error handler middleware
 - [x] Git repo + GitHub push
@@ -249,3 +316,4 @@ curl http://127.0.0.1:41847/health
 4. **User preference tipi** - Dashboard'da yesil ile gosterilir
 5. **Proje bazli ogrenme** - Tum sorgular project_id filtreli
 6. **Dual entegrasyon** (hook + MCP) - Hook'lar non-blocking kalir
+7. **Yol Haritasi** (`plan-service.js`) - Faz/Gorev hiyerarsisi, XML import, guide'da otomatik gosterim

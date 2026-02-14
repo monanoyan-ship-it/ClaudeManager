@@ -95,10 +95,23 @@ const app = {
     const project = await this.api(`/projects/${id}`);
     const statsEl = document.getElementById('projectStats');
     const s = project.stats;
+    const baseUrl = 'http://127.0.0.1:41847';
     statsEl.innerHTML = `
       <div class="stat-box"><div class="stat-value">${s.session_count}</div><div class="stat-label">Session</div></div>
       <div class="stat-box"><div class="stat-value">${s.prompt_count}</div><div class="stat-label">Prompt</div></div>
       <div class="stat-box"><div class="stat-value">${s.tool_count}</div><div class="stat-label">Tool Kullanimi</div></div>
+      <div class="stat-box curl-buttons-box">
+        <div class="stat-label" style="margin-bottom:4px;">Claude'a Kopyala</div>
+        <div class="curl-buttons">
+          <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/patterns')" title="Pattern'leri oku">Pattern Oku</button>
+          <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/analytics')" title="Analitik verileri cek">Analitik</button>
+          <button class="btn-sm" onclick="app.copyText('curl -X POST ${baseUrl}/api/patterns -H &quot;Content-Type: application/json&quot; -d \\'{&quot;project_id&quot;:${id},&quot;type&quot;:&quot;rule&quot;,&quot;title&quot;:&quot;KURAL_BASLIGI&quot;,&quot;description&quot;:&quot;ACIKLAMA&quot;}\\'')" title="Yeni pattern ekle">Pattern Ekle</button>
+          <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/prompts?limit=10')" title="Son prompt'lari oku">Prompt'lar</button>
+          <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/tool-uses?limit=10')" title="Son tool kullanimlarini oku">Tool'lar</button>
+          <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/roadmap')" title="Yol haritasini oku">Yol Haritasi</button>
+          <button class="btn-sm" onclick="app.copyText('curl -X PUT ${baseUrl}/api/tasks/GOREV_ID -H &quot;Content-Type: application/json&quot; -d \\'{&quot;status&quot;:&quot;completed&quot;}\\'')" title="Gorev tamamla">Gorev Tamamla</button>
+        </div>
+      </div>
     `;
   },
 
@@ -114,6 +127,7 @@ const app = {
       sessions: () => this.loadSessions(),
       prompts: () => this.loadPrompts(),
       patterns: () => this.loadPatterns(),
+      roadmap: () => this.loadRoadmap(),
       tools: () => this.loadToolUses(),
       analytics: () => this.loadAnalytics()
     };
@@ -533,6 +547,283 @@ const app = {
     this.closeMergeModal();
     alert('Projeler basariyla birlestirildi!');
     this.loadProjects();
+  },
+
+  // --- Roadmap ---
+  async loadRoadmap() {
+    const id = this.currentProject.id;
+    const [roadmap, stats] = await Promise.all([
+      this.api(`/projects/${id}/roadmap`),
+      this.api(`/projects/${id}/roadmap/stats`)
+    ]);
+
+    // Progress bar
+    const progressEl = document.getElementById('roadmapProgress');
+    progressEl.innerHTML = `
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: ${stats.percent}%"></div>
+        <div class="progress-text">${stats.completed}/${stats.total} gorev (%${stats.percent})</div>
+      </div>
+    `;
+
+    // Phases
+    const el = document.getElementById('roadmapContent');
+    if (!roadmap.data.length) {
+      el.innerHTML = '<div class="empty-state">Henuz yol haritasi yok. "Yeni Faz" ile baslayin veya XML import edin.</div>';
+      return;
+    }
+
+    el.innerHTML = roadmap.data.map(phase => `
+      <div class="phase-card" id="phase-${phase.id}">
+        <div class="phase-header" onclick="app.togglePhase(${phase.id})">
+          <div class="phase-title-group">
+            <span class="phase-chevron" id="chevron-${phase.id}">&#9660;</span>
+            <h4>Faz ${this.esc(phase.phase_no)} - ${this.esc(phase.title)}</h4>
+            <span class="status-badge status-${phase.status}">${this.statusLabel(phase.status)}</span>
+          </div>
+          <div class="phase-header-actions">
+            <span class="phase-task-count">${phase.tasks.filter(t => t.status === 'completed').length}/${phase.tasks.length}</span>
+            <button class="btn-sm" onclick="event.stopPropagation(); app.editPhase(${phase.id})" title="Duzenle">&#9998;</button>
+            <button class="btn-sm btn-danger" onclick="event.stopPropagation(); app.deletePhaseConfirm(${phase.id})" title="Sil">&#10005;</button>
+          </div>
+        </div>
+        <div class="phase-body" id="phase-body-${phase.id}">
+          ${phase.tasks.map(task => this.renderTask(task)).join('')}
+          <button class="add-task-btn" onclick="app.showTaskModal(${phase.id})">+ Gorev Ekle</button>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  renderTask(task) {
+    const statusIcon = task.status === 'completed' ? '&#10003;' : task.status === 'in_progress' ? '&#9654;' : task.status === 'cancelled' ? '&#10007;' : '';
+    const hasDetail = task.detail || task.risks;
+    return `
+      <div class="task-item">
+        <button class="task-status-btn ${task.status}" onclick="app.cycleTaskStatus(${task.id}, '${task.status}')" title="Durum degistir">${statusIcon}</button>
+        <div class="task-info">
+          <div class="task-info-header">
+            <span class="task-no">${this.esc(task.task_no)}</span>
+            <span class="task-name ${task.status}">${this.esc(task.title)}</span>
+          </div>
+          ${hasDetail ? `<button class="task-detail-toggle" onclick="app.toggleTaskDetail(${task.id})">Detay goster</button>` : ''}
+          <div class="task-detail-content hidden" id="task-detail-${task.id}">
+            ${task.detail ? `<div>${this.esc(task.detail)}</div>` : ''}
+            ${task.risks ? `<div class="task-risks">${this.esc(task.risks)}</div>` : ''}
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn-sm" onclick="app.editTask(${task.id}, ${task.phase_id})" title="Duzenle">&#9998;</button>
+          <button class="btn-sm btn-danger" onclick="app.deleteTaskConfirm(${task.id})" title="Sil">&#10005;</button>
+        </div>
+      </div>
+    `;
+  },
+
+  statusLabel(status) {
+    return { planned: 'Planli', in_progress: 'Devam Ediyor', completed: 'Tamamlandi', cancelled: 'Iptal' }[status] || status;
+  },
+
+  togglePhase(phaseId) {
+    const body = document.getElementById(`phase-body-${phaseId}`);
+    const chevron = document.getElementById(`chevron-${phaseId}`);
+    body.classList.toggle('collapsed');
+    chevron.innerHTML = body.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
+  },
+
+  toggleTaskDetail(taskId) {
+    const el = document.getElementById(`task-detail-${taskId}`);
+    const btn = el.previousElementSibling;
+    el.classList.toggle('hidden');
+    btn.textContent = el.classList.contains('hidden') ? 'Detay goster' : 'Detay gizle';
+  },
+
+  async cycleTaskStatus(taskId, currentStatus) {
+    const cycle = { planned: 'in_progress', in_progress: 'completed', completed: 'planned', cancelled: 'planned' };
+    const newStatus = cycle[currentStatus] || 'planned';
+    await this.api(`/tasks/${taskId}`, { method: 'PUT', body: { status: newStatus } });
+    this.loadRoadmap();
+  },
+
+  // Phase CRUD
+  showPhaseModal(phase = null) {
+    document.getElementById('phaseModalTitle').textContent = phase ? 'Faz Duzenle' : 'Yeni Faz';
+    document.getElementById('phaseId').value = phase ? phase.id : '';
+    document.getElementById('phaseNo').value = phase ? phase.phase_no : '';
+    document.getElementById('phaseTitle').value = phase ? phase.title : '';
+    document.getElementById('phaseStatus').value = phase ? phase.status : 'planned';
+    document.getElementById('phaseModal').classList.add('active');
+  },
+
+  closePhaseModal() {
+    document.getElementById('phaseModal').classList.remove('active');
+  },
+
+  async savePhase(e) {
+    e.preventDefault();
+    const id = document.getElementById('phaseId').value;
+    const body = {
+      phase_no: document.getElementById('phaseNo').value,
+      title: document.getElementById('phaseTitle').value,
+      status: document.getElementById('phaseStatus').value
+    };
+
+    if (id) {
+      await this.api(`/phases/${id}`, { method: 'PUT', body });
+    } else {
+      await this.api(`/projects/${this.currentProject.id}/phases`, { method: 'POST', body });
+    }
+
+    this.closePhaseModal();
+    this.loadRoadmap();
+  },
+
+  async editPhase(phaseId) {
+    const roadmap = await this.api(`/projects/${this.currentProject.id}/roadmap`);
+    const phase = roadmap.data.find(p => p.id === phaseId);
+    if (phase) this.showPhaseModal(phase);
+  },
+
+  async deletePhaseConfirm(phaseId) {
+    if (!confirm('Bu faz ve tum gorevleri silinecek. Emin misiniz?')) return;
+    await this.api(`/phases/${phaseId}`, { method: 'DELETE' });
+    this.loadRoadmap();
+  },
+
+  // Task CRUD
+  showTaskModal(phaseId, task = null) {
+    document.getElementById('taskModalTitle').textContent = task ? 'Gorev Duzenle' : 'Yeni Gorev';
+    document.getElementById('taskId').value = task ? task.id : '';
+    document.getElementById('taskPhaseId').value = phaseId;
+    document.getElementById('taskNo').value = task ? task.task_no : '';
+    document.getElementById('taskTitle').value = task ? task.title : '';
+    document.getElementById('taskDetail').value = task ? (task.detail || '') : '';
+    document.getElementById('taskRisks').value = task ? (task.risks || '') : '';
+    document.getElementById('taskStatus').value = task ? task.status : 'planned';
+    document.getElementById('taskModal').classList.add('active');
+  },
+
+  closeTaskModal() {
+    document.getElementById('taskModal').classList.remove('active');
+  },
+
+  async saveTask(e) {
+    e.preventDefault();
+    const id = document.getElementById('taskId').value;
+    const phaseId = document.getElementById('taskPhaseId').value;
+    const body = {
+      task_no: document.getElementById('taskNo').value,
+      title: document.getElementById('taskTitle').value,
+      detail: document.getElementById('taskDetail').value || null,
+      risks: document.getElementById('taskRisks').value || null,
+      status: document.getElementById('taskStatus').value
+    };
+
+    if (id) {
+      await this.api(`/tasks/${id}`, { method: 'PUT', body });
+    } else {
+      body.project_id = this.currentProject.id;
+      await this.api(`/phases/${phaseId}/tasks`, { method: 'POST', body });
+    }
+
+    this.closeTaskModal();
+    this.loadRoadmap();
+  },
+
+  async editTask(taskId, phaseId) {
+    const roadmap = await this.api(`/projects/${this.currentProject.id}/roadmap`);
+    for (const phase of roadmap.data) {
+      const task = phase.tasks.find(t => t.id === taskId);
+      if (task) { this.showTaskModal(phaseId, task); return; }
+    }
+  },
+
+  async deleteTaskConfirm(taskId) {
+    if (!confirm('Bu gorev silinecek. Emin misiniz?')) return;
+    await this.api(`/tasks/${taskId}`, { method: 'DELETE' });
+    this.loadRoadmap();
+  },
+
+  // Import
+  showImportModal() {
+    document.getElementById('xmlContent').value = '';
+    document.getElementById('xmlFileInput').value = '';
+    document.getElementById('importModal').classList.add('active');
+  },
+
+  closeImportModal() {
+    document.getElementById('importModal').classList.remove('active');
+  },
+
+  loadXmlFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('xmlContent').value = e.target.result;
+    };
+    reader.readAsText(file);
+  },
+
+  async executeImport() {
+    const xml = document.getElementById('xmlContent').value.trim();
+    if (!xml) {
+      alert('XML icerik giriniz.');
+      return;
+    }
+    const result = await this.api(`/projects/${this.currentProject.id}/roadmap/import`, {
+      method: 'POST',
+      body: { xml }
+    });
+    this.closeImportModal();
+    alert(`Import tamamlandi: ${result.imported.phases} faz, ${result.imported.tasks} gorev`);
+    this.loadRoadmap();
+  },
+
+  // --- Setup ---
+  async showSetup() {
+    this.showView('setupView');
+    // Check API health
+    try {
+      const health = await fetch('/health').then(r => r.json());
+      const el = document.getElementById('apiStatus');
+      el.textContent = `Calisiyor - v${health.version}`;
+      el.className = 'setup-status ok';
+    } catch {
+      const el = document.getElementById('apiStatus');
+      el.textContent = 'API erisilemedi!';
+      el.className = 'setup-status fail';
+    }
+    // Load hook config
+    try {
+      const hookRes = await fetch('/setup-hooks.json');
+      if (hookRes.ok) {
+        const hookText = await hookRes.text();
+        document.getElementById('hookContent').textContent = hookText;
+      }
+    } catch {}
+  },
+
+  copyCmd(elementId) {
+    const el = document.getElementById(elementId);
+    const text = el.textContent || el.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const toast = document.createElement('div');
+      toast.className = 'copied-toast';
+      toast.textContent = 'Kopyalandi!';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    });
+  },
+
+  copyText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const toast = document.createElement('div');
+      toast.className = 'copied-toast';
+      toast.textContent = 'Kopyalandi!';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    });
   },
 
   // --- Helpers ---
