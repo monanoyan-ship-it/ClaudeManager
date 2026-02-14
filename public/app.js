@@ -110,6 +110,7 @@ const app = {
           <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/tool-uses?limit=10')" title="Son tool kullanimlarini oku">Tool'lar</button>
           <button class="btn-sm" onclick="app.copyText('curl -s ${baseUrl}/api/projects/${id}/roadmap')" title="Yol haritasini oku">Yol Haritasi</button>
           <button class="btn-sm" onclick="app.copyText('curl -X PUT ${baseUrl}/api/tasks/GOREV_ID -H &quot;Content-Type: application/json&quot; -d \\'{&quot;status&quot;:&quot;completed&quot;}\\'')" title="Gorev tamamla">Gorev Tamamla</button>
+          <button class="btn-sm btn-export" onclick="app.exportProject(${id})" title="Proje rehberini .md olarak indir (Claude Desktop icin)">Export .md</button>
         </div>
       </div>
     `;
@@ -778,6 +779,11 @@ const app = {
     this.closeImportModal();
     alert(`Import tamamlandi: ${result.imported.phases} faz, ${result.imported.tasks} gorev`);
     this.loadRoadmap();
+  },
+
+  // --- Export ---
+  exportProject(id) {
+    window.open(`/api/projects/${id}/export`, '_blank');
   },
 
   // --- Setup ---

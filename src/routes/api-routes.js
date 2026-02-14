@@ -231,6 +231,94 @@ router.get('/search', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/projects/:id/export — Export project context as markdown
+router.get('/projects/:id/export', async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const projectId = parseInt(req.params.id);
+    const result = db.exec('SELECT id, name, path FROM projects WHERE id = ?', [projectId]);
+    if (!result.length || !result[0].values.length) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const project = { id: result[0].values[0][0], name: result[0].values[0][1], path: result[0].values[0][2] };
+
+    const lines = [];
+    lines.push(`# ${project.name} - Proje Rehberi`);
+    lines.push('');
+    lines.push(`> Bu dosya ClaudeManager tarafindan olusturuldu.`);
+    lines.push(`> Proje yolu: ${project.path}`);
+    lines.push('');
+
+    // Patterns
+    const patterns = await patternService.getPatterns(projectId);
+    const rules = patterns.filter(p => p.type === 'rule');
+    const mistakes = patterns.filter(p => p.type === 'mistake');
+    const preferences = patterns.filter(p => p.type === 'preference');
+    const otherPatterns = patterns.filter(p => !['rule', 'mistake', 'preference'].includes(p.type));
+
+    if (rules.length) {
+      lines.push('## Kurallar (MUTLAKA UYGULA)');
+      rules.forEach(r => lines.push(`- **${r.title}**${r.description ? ': ' + r.description : ''}`));
+      lines.push('');
+    }
+    if (mistakes.length) {
+      lines.push('## Gecmis Hatalar (TEKRARLAMA)');
+      mistakes.forEach(m => lines.push(`- **${m.title}**${m.description ? ': ' + m.description : ''}`));
+      lines.push('');
+    }
+    if (preferences.length) {
+      lines.push('## Kullanici Tercihleri');
+      preferences.forEach(p => lines.push(`- **${p.title}**${p.description ? ': ' + p.description : ''}`));
+      lines.push('');
+    }
+    if (otherPatterns.length) {
+      lines.push('## Ogrenilen Pattern\'ler');
+      otherPatterns.forEach(p => lines.push(`- **${p.title}**${p.description ? ': ' + p.description : ''}`));
+      lines.push('');
+    }
+
+    // Roadmap
+    const roadmapStats = await planService.getRoadmapStats(projectId);
+    if (roadmapStats.total > 0) {
+      lines.push('## Yol Haritasi');
+      lines.push(`Ilerleme: ${roadmapStats.completed}/${roadmapStats.total} gorev (%${roadmapStats.percent})`);
+      lines.push('');
+
+      const roadmap = await planService.getRoadmap(projectId);
+      for (const phase of roadmap) {
+        const statusEmoji = { completed: '[x]', in_progress: '[-]', planned: '[ ]' };
+        lines.push(`### Faz ${phase.phase_no} - ${phase.title} (${phase.status})`);
+        for (const task of phase.tasks) {
+          const mark = statusEmoji[task.status] || '[ ]';
+          lines.push(`- ${mark} **${task.task_no}:** ${task.title}`);
+          if (task.detail) {
+            task.detail.split('\n').forEach(line => lines.push(`  ${line}`));
+          }
+          if (task.risks) {
+            lines.push(`  - Risk: ${task.risks.split('\n')[0]}`);
+          }
+        }
+        lines.push('');
+      }
+    }
+
+    if (!patterns.length && roadmapStats.total === 0) {
+      lines.push('Henuz kayitli pattern veya yol haritasi yok.');
+      lines.push('');
+    }
+
+    const content = lines.join('\n');
+    const filename = `${project.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_rehber.md`;
+
+    if (req.query.format === 'json') {
+      res.json({ filename, content });
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.type('text/markdown').send(content);
+    }
+  } catch (err) { next(err); }
+});
+
 // --- Roadmap / Plan Endpoints ---
 
 // GET /api/projects/:id/roadmap — Full roadmap (phases + tasks)

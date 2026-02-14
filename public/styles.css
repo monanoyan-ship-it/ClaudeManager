@@ -552,6 +552,8 @@ button { cursor: pointer; }
 }
 .curl-section h4 { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
 .curl-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-export { background: var(--primary); color: white !important; border-color: var(--primary); }
+.btn-export:hover { background: var(--primary-hover); }
 
 /* Roadmap */
 .roadmap-header {
