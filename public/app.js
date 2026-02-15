@@ -474,7 +474,7 @@ const app = {
 
   // --- Delete Project ---
   async deleteProject(id, name) {
-    if (!confirm(`"${name}" projesi ve TUM verileri silinecek. Emin misiniz?`)) return;
+    if (!confirm(`"${name}" projesi silinecek (pattern'ler korunur). Emin misiniz?`)) return;
     await this.api(`/projects/${id}`, { method: 'DELETE' });
     this.loadProjects();
   },

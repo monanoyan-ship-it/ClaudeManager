@@ -51,6 +51,15 @@ router.post('/prompt', async (req, res) => {
       }
     }
 
+    if (analysis.active_tasks && analysis.active_tasks.length > 0) {
+      contextParts.push('[ClaudeManager] Active tasks (in_progress):');
+      for (const t of analysis.active_tasks) {
+        contextParts.push(`  - [${t.task_no}] ${t.title}`);
+        if (t.detail) contextParts.push(`    Detail: ${t.detail.substring(0, 300)}`);
+        if (t.risks) contextParts.push(`    Risks: ${t.risks.substring(0, 200)}`);
+      }
+    }
+
     // Return in Claude Code hook output format
     const response = { continue: true };
     if (contextParts.length > 0) {

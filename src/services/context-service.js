@@ -1,22 +1,25 @@
 const logService = require('./log-service');
 const patternService = require('./pattern-service');
 const searchService = require('./search-service');
+const planService = require('./plan-service');
 const { detectFrustration } = require('../utils/analyzer');
 
 class ContextService {
   async getProjectContext(projectName, projectPath) {
     const projectId = await logService.ensureProject(projectName, projectPath);
 
-    const [patterns, recentPrompts, stats, topics] = await Promise.all([
+    const [patterns, recentPrompts, stats, topics, allTasks] = await Promise.all([
       patternService.getPatterns(projectId),
       logService.getRecentPrompts(projectId, 10),
       logService.getSessionStats(projectId),
-      searchService.getFrequentTopics(projectId, 5)
+      searchService.getFrequentTopics(projectId, 5),
+      planService.getTasks(projectId).catch(() => [])
     ]);
 
     const rules = patterns.filter(p => p.type === 'rule');
     const mistakes = patterns.filter(p => p.type === 'mistake');
     const preferences = patterns.filter(p => p.type === 'preference');
+    const activeTasks = allTasks.filter(t => t.status === 'in_progress');
 
     return {
       project: { id: projectId, name: projectName, path: projectPath },
@@ -24,6 +27,7 @@ class ContextService {
       rules: rules.map(r => `- ${r.title}${r.description ? ': ' + r.description : ''}`),
       mistakes: mistakes.map(m => `- ${m.title}${m.description ? ': ' + m.description : ''}`),
       preferences: preferences.map(p => `- ${p.title}${p.description ? ': ' + p.description : ''}`),
+      active_tasks: activeTasks,
       recent_topics: topics.map(t => t.tag),
       recent_history: recentPrompts.slice(0, 5).map(p => ({
         role: p.role,
@@ -59,12 +63,20 @@ class ContextService {
       warnings.push(`Similar request found ${similarPrompts.length} times before. Check if previous attempts had issues.`);
     }
 
+    // Check for active tasks (in_progress)
+    let activeTasks = [];
+    try {
+      const tasks = await planService.getTasks(projectId);
+      activeTasks = tasks.filter(t => t.status === 'in_progress');
+    } catch (e) { /* roadmap may not exist */ }
+
     return {
       frustration_score: frustration,
       relevant_patterns: relevantPatterns.slice(0, 5),
       is_repeated: isRepeated,
       similar_count: similarPrompts.length,
-      warnings
+      warnings,
+      active_tasks: activeTasks
     };
   }
 
@@ -120,6 +132,15 @@ class ContextService {
       lines.push('');
       lines.push('## User Preferences:');
       lines.push(...context.preferences);
+    }
+
+    if (context.active_tasks && context.active_tasks.length > 0) {
+      lines.push('');
+      lines.push('## Active Tasks (in_progress):');
+      for (const t of context.active_tasks) {
+        lines.push(`- [${t.task_no}] ${t.title}`);
+        if (t.detail) lines.push(`  Detail: ${t.detail.substring(0, 300)}`);
+      }
     }
 
     if (context.recent_topics.length > 0) {

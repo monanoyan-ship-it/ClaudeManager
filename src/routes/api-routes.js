@@ -110,10 +110,12 @@ router.get('/projects/:id/analytics', async (req, res, next) => {
 });
 
 // DELETE /api/projects/:id — Delete a project and all its data
+// Patterns are preserved by default. Use ?delete_patterns=true to also delete patterns.
 router.delete('/projects/:id', async (req, res, next) => {
   try {
     const db = await getDb();
     const projectId = parseInt(req.params.id);
+    const deletePatterns = req.query.delete_patterns === 'true';
 
     const exists = db.exec('SELECT id, name FROM projects WHERE id = ?', [projectId]);
     if (!exists.length || !exists[0].values.length) {
@@ -121,17 +123,30 @@ router.delete('/projects/:id', async (req, res, next) => {
     }
     const projectName = exists[0].values[0][1];
 
-    // Delete all related data
+    // Count what will be deleted (for confirmation)
+    const patternCount = db.exec('SELECT COUNT(*) FROM patterns WHERE project_id = ?', [projectId]);
+    const pCount = patternCount.length ? patternCount[0].values[0][0] : 0;
+
+    // Delete related data
     db.run('DELETE FROM tasks WHERE project_id = ?', [projectId]);
     db.run('DELETE FROM phases WHERE project_id = ?', [projectId]);
     db.run('DELETE FROM tool_uses WHERE project_id = ?', [projectId]);
     db.run('DELETE FROM prompts WHERE project_id = ?', [projectId]);
-    db.run('DELETE FROM patterns WHERE project_id = ?', [projectId]);
     db.run('DELETE FROM sessions WHERE project_id = ?', [projectId]);
+
+    if (deletePatterns) {
+      db.run('DELETE FROM patterns WHERE project_id = ?', [projectId]);
+    }
+
     db.run('DELETE FROM projects WHERE id = ?', [projectId]);
 
     save();
-    res.json({ success: true, deleted: projectName });
+    res.json({
+      success: true,
+      deleted: projectName,
+      patterns_kept: !deletePatterns ? pCount : 0,
+      patterns_deleted: deletePatterns ? pCount : 0
+    });
   } catch (err) { next(err); }
 });
 
