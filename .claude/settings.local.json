@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm start)",
+      "Bash(curl:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(node:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(docker exec:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(git push:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process where \"name=''node.exe''\" get ProcessId,CommandLine)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec:*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker inspect:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(python3:*)",
+      "Bash(docker volume:*)",
+      "Bash(docker cp:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker start:*)"
+    ]
+  }
+}
