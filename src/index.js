@@ -18,6 +18,11 @@ async function main() {
   // Serve static dashboard files
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
+  // Serve setup-hooks.json from project root
+  app.get('/setup-hooks.json', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'setup-hooks.json'));
+  });
+
   // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'claude-manager', version: '2.0.0' });
