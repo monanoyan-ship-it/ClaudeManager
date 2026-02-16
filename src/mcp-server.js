@@ -67,7 +67,7 @@ server.tool(
   'Get learned patterns and rules for a project. Use detailed=true for full descriptions.',
   {
     project: z.string().describe('Project name or path'),
-    type: z.enum(['rule', 'pattern', 'preference', 'mistake']).optional().describe('Filter by pattern type'),
+    type: z.enum(['rule', 'preference', 'mistake']).optional().describe('Filter by pattern type'),
     detailed: z.boolean().default(false).describe('If false, returns compact list (titles + IDs only). If true, includes full descriptions.')
   },
   async ({ project, type, detailed }) => {
@@ -103,7 +103,7 @@ server.tool(
   'Add a new learned pattern, rule, preference, or mistake for a project',
   {
     project: z.string().describe('Project name or path'),
-    type: z.enum(['rule', 'pattern', 'preference', 'mistake']).describe('Pattern type'),
+    type: z.enum(['rule', 'preference', 'mistake']).describe('Pattern type: rule, preference, or mistake'),
     title: z.string().describe('Short title for the pattern'),
     description: z.string().optional().describe('Detailed description'),
     confidence: z.number().min(0).max(1).default(1.0).describe('Confidence score 0-1')

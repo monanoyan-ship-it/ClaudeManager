@@ -48,19 +48,21 @@ Claude Code Session
         +-- Web Dashboard (http://127.0.0.1:41847/)
             |
             v
-    SQLite DB (data/claude_manager.db)
+    PostgreSQL DB (claude_manager)
         |-- projects - Proje bilgileri
         |-- sessions - Session loglari
-        |-- prompts - Tum prompt'lar (FTS5 index'li)
+        |-- prompts - Tum prompt'lar
         |-- tool_uses - Tool cagrilari
-        |-- patterns - Ogrenilen kurallar/pattern'ler/hatalar
+        |-- patterns - Ogrenilen kurallar/hatalar/tercihler (sadece rule/mistake/preference)
         |-- phases - Yol haritasi fazlari
-        +-- tasks - Faz altindaki gorevler
+        |-- tasks - Faz altindaki gorevler
+        |-- project_notes - Kritik bilgiler (hesaplar, API key'ler, sifreler)
+        +-- journal - Gunluk girisler (arastirma, kararlar, notlar)
 ```
 
 ## Teknoloji Secimleri
 
-- **sql.js** (pure-JS SQLite) - `better-sqlite3` Windows'ta native derleme sorunu cikardi (VS 18 Insiders uyumsuzlugu), sql.js sifir native dependency
+- **PostgreSQL** - sql.js'ten migrate edildi (2026-02-16), local Windows PostgreSQL (port 5432)
 - **Express** - Hook'lar HTTP POST yapiyor, basit ve guvenilir
 - **MCP SDK** (`@modelcontextprotocol/sdk`) - Claude Code'un native MCP destegi, stdio transport
 - **Node.js** - Hook script'leri de Node.js, tek runtime
@@ -90,16 +92,18 @@ ClaudeManager/
 |   |   +-- error-handler.js  # Global Express error handler
 |   |
 |   |-- db/
-|   |   |-- schema.sql        # 7 tablo + FTS5 + index tanimlari
-|   |   +-- init.js           # sql.js DB baglantisi, auto-save (5sn)
+|   |   |-- schema.sql        # 9 tablo + index tanimlari
+|   |   +-- init.js           # PostgreSQL baglantisi (pg Pool)
 |   |
 |   |-- services/
 |   |   |-- log-service.js    # Proje/session/prompt/tool CRUD + sayfalama
-|   |   |-- pattern-service.js # Pattern CRUD + FTS arama + update
+|   |   |-- pattern-service.js # Pattern CRUD + tip validasyonu (rule/mistake/preference)
 |   |   |-- context-service.js # Zengin context olusturma
 |   |   |-- search-service.js  # Full-text + tarih bazli arama
 |   |   |-- analytics-service.js # Analitik sorgulari (frustration, tool, kategori)
-|   |   +-- plan-service.js    # Yol haritasi CRUD + XML import
+|   |   |-- plan-service.js    # Yol haritasi CRUD + XML import
+|   |   |-- note-service.js    # Proje notlari CRUD (hesap bilgileri, API key'ler)
+|   |   +-- journal-service.js # Gunluk girisler CRUD (tarih bazli)
 |   |
 |   +-- utils/
 |       |-- analyzer.js       # Prompt analiz araclari
@@ -136,6 +140,14 @@ ClaudeManager/
 | POST | /api/patterns | Yeni pattern olustur |
 | PUT | /api/patterns/:id | Pattern guncelle |
 | DELETE | /api/patterns/:id | Pattern deaktif et |
+| GET | /api/projects/:id/notes | Proje notlari |
+| POST | /api/projects/:id/notes | Yeni not olustur |
+| PUT | /api/notes/:id | Not guncelle |
+| DELETE | /api/notes/:id | Not sil |
+| GET | /api/projects/:id/journal | Gunluk girisler (category, start, end filtre) |
+| POST | /api/projects/:id/journal | Yeni gunluk girisi |
+| PUT | /api/journal/:id | Gunluk girisi guncelle |
+| DELETE | /api/journal/:id | Gunluk girisi sil |
 | GET | /api/search?q=... | Full-text arama |
 | GET | /api/projects/:id/roadmap | Tam yol haritasi (fazlar + gorevler) |
 | GET | /api/projects/:id/roadmap/stats | Yol haritasi istatistikleri |
@@ -159,7 +171,9 @@ Dashboard: `http://127.0.0.1:41847/`
   - Genel Bakis: kurallar, hatalar, tercihler, son aktivite
   - Session'lar: tarih, sure, prompt sayisi
   - Prompt'lar: tablo + filtreler (kategori, arama). Frustration skoru renk koduyla
-  - Pattern'ler: tip bazli gruplama + CRUD (ekle/duzenle/sil modal)
+  - Pattern'ler: tip bazli gruplama (rule/mistake/preference) + CRUD modal
+  - Notlar: kritik bilgiler (hesaplar, sifreler, API key'ler) + pin + CRUD modal
+  - Gunluk: tarih bazli girisler, kategori filtresi, CRUD modal
   - Yol Haritasi: faz/gorev yonetimi, ilerleme cubugu, XML import, durum dongusu
   - Tool Kullanimi: tool adi, dosya, basari durumu
   - Analitik: 4 grafik (frustration trend, tool dagilimi, kategori, aktivite)
@@ -277,12 +291,12 @@ curl http://127.0.0.1:41847/health
 ## Mevcut Durum
 
 - [x] Proje altyapisi (package.json, Docker, gitignore)
-- [x] SQLite veritabani (7 tablo + FTS5 + indexler)
-- [x] Servis katmani (log, pattern, context, search, analyzer, analytics, plan)
+- [x] PostgreSQL veritabani (9 tablo + indexler)
+- [x] Servis katmani (log, pattern, context, search, analyzer, analytics, plan, note, journal)
 - [x] Hook Handler (4 endpoint)
 - [x] MCP Server (7 tool, progressive disclosure)
 - [x] Hook script'leri (4 adet, Node.js, Windows uyumlu)
-- [x] REST API (21 endpoint, sayfalama, filtreleme, yol haritasi)
+- [x] REST API (30 endpoint, sayfalama, filtreleme, yol haritasi, notlar, gunluk)
 - [x] Web Dashboard (Turkce, dark/light mode, Chart.js, yol haritasi)
 - [x] Yol Haritasi sistemi (Faz > Gorev, XML import, guide entegrasyonu)
 - [x] Path normalizasyonu (duplicate proje onleme)
@@ -305,8 +319,9 @@ curl http://127.0.0.1:41847/health
 - `npm start` -> Express API (port 41847) + Dashboard
 - `npm run mcp` -> MCP Server (stdio, test icin)
 - `npm run dev` -> Express API with --watch
-- DB dosyasi: `data/claude_manager.db` (gitignore'd, auto-save 5sn)
+- DB: PostgreSQL (local, port 5432, user: claude_manager, db: claude_manager)
 - Test: `node -e "require('./src/db/init').getDb().then(() => console.log('OK'))"` ile DB testi
+- Windows Task Scheduler: "ClaudeManager API" - oturum acilisinda otomatik baslatir
 
 ## Korunan Benzersiz Ozellikler
 
@@ -317,3 +332,6 @@ curl http://127.0.0.1:41847/health
 5. **Proje bazli ogrenme** - Tum sorgular project_id filtreli
 6. **Dual entegrasyon** (hook + MCP) - Hook'lar non-blocking kalir
 7. **Yol Haritasi** (`plan-service.js`) - Faz/Gorev hiyerarsisi, XML import, guide'da otomatik gosterim
+8. **Journal** (`journal-service.js`) - Gunluk girisler, pattern tablosundan ayrildi
+9. **Notes** (`note-service.js`) - Kritik bilgiler (hesap, sifre, API key), pin destegi
+10. **Pattern tip kisitlamasi** - Sadece rule/mistake/preference kabul edilir, "pattern" tipi kaldirildi

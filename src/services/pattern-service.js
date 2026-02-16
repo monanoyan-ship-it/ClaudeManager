@@ -1,7 +1,12 @@
 const { getDb, save } = require('../db/init');
 
+const ALLOWED_PATTERN_TYPES = ['rule', 'mistake', 'preference'];
+
 class PatternService {
   async addPattern(projectId, type, title, description, sourcePromptId = null, confidence = 1.0) {
+    if (!ALLOWED_PATTERN_TYPES.includes(type)) {
+      throw new Error(`Invalid pattern type "${type}". Allowed: ${ALLOWED_PATTERN_TYPES.join(', ')}`);
+    }
     const db = await getDb();
 
     // Check for duplicate
@@ -91,6 +96,9 @@ class PatternService {
   }
 
   async updatePattern(patternId, updates) {
+    if (updates.type !== undefined && !ALLOWED_PATTERN_TYPES.includes(updates.type)) {
+      throw new Error(`Invalid pattern type "${updates.type}". Allowed: ${ALLOWED_PATTERN_TYPES.join(', ')}`);
+    }
     const db = await getDb();
     const fields = [];
     const params = [];

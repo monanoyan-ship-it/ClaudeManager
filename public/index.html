@@ -51,6 +51,7 @@
         <button class="tab" data-tab="prompts" onclick="app.switchTab('prompts')">Prompt'lar</button>
         <button class="tab" data-tab="patterns" onclick="app.switchTab('patterns')">Pattern'ler</button>
         <button class="tab" data-tab="notes" onclick="app.switchTab('notes')">Notlar</button>
+        <button class="tab" data-tab="journal" onclick="app.switchTab('journal')">Gunluk</button>
         <button class="tab" data-tab="roadmap" onclick="app.switchTab('roadmap')">Yol Haritasi</button>
         <button class="tab" data-tab="tools" onclick="app.switchTab('tools')">Tool Kullanimi</button>
         <button class="tab" data-tab="analytics" onclick="app.switchTab('analytics')">Analitik</button>
@@ -94,7 +95,6 @@
             <button class="pill rule" data-type="rule" onclick="app.filterPatterns('rule')">Kurallar</button>
             <button class="pill mistake" data-type="mistake" onclick="app.filterPatterns('mistake')">Hatalar</button>
             <button class="pill preference" data-type="preference" onclick="app.filterPatterns('preference')">Tercihler</button>
-            <button class="pill pattern" data-type="pattern" onclick="app.filterPatterns('pattern')">Pattern'ler</button>
           </div>
           <button class="btn-primary" onclick="app.showPatternModal()">+ Yeni Pattern</button>
         </div>
@@ -114,6 +114,21 @@
           <button class="btn-primary" onclick="app.showNoteModal()">+ Yeni Not</button>
         </div>
         <div id="notesList"></div>
+      </div>
+
+      <!-- Journal Tab -->
+      <div class="tab-content" id="tab-journal">
+        <div class="patterns-header">
+          <div class="pattern-filters">
+            <button class="pill active" data-journal-cat="" onclick="app.filterJournal('')">Tumu</button>
+            <button class="pill" data-journal-cat="genel" onclick="app.filterJournal('genel')">Genel</button>
+            <button class="pill" data-journal-cat="teknik" onclick="app.filterJournal('teknik')">Teknik</button>
+            <button class="pill" data-journal-cat="karar" onclick="app.filterJournal('karar')">Karar</button>
+            <button class="pill" data-journal-cat="arastirma" onclick="app.filterJournal('arastirma')">Arastirma</button>
+          </div>
+          <button class="btn-primary" onclick="app.showJournalModal()">+ Yeni Giris</button>
+        </div>
+        <div id="journalList"></div>
       </div>
 
       <!-- Roadmap Tab -->
@@ -239,7 +254,6 @@
             <option value="rule">Kural</option>
             <option value="mistake">Hata</option>
             <option value="preference">Tercih</option>
-            <option value="pattern">Pattern</option>
           </select>
         </div>
         <div class="form-group">
@@ -386,6 +400,46 @@
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" onclick="app.closeNoteModal()">Iptal</button>
+          <button type="submit" class="btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Journal Modal -->
+  <div class="modal-overlay" id="journalModal">
+    <div class="modal">
+      <h3 id="journalModalTitle">Yeni Gunluk Girisi</h3>
+      <form id="journalForm" onsubmit="app.saveJournalEntry(event)">
+        <input type="hidden" id="journalId" />
+        <div class="form-group">
+          <label>Tarih</label>
+          <input type="date" id="journalDate" required />
+        </div>
+        <div class="form-group">
+          <label>Baslik</label>
+          <input type="text" id="journalTitle" required />
+        </div>
+        <div class="form-group">
+          <label>Icerik</label>
+          <textarea id="journalContent" rows="5"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Kategori</label>
+          <select id="journalCategory">
+            <option value="">Yok</option>
+            <option value="genel">Genel</option>
+            <option value="teknik">Teknik</option>
+            <option value="karar">Karar</option>
+            <option value="arastirma">Arastirma</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Etiketler (virgul ile)</label>
+          <input type="text" id="journalTags" placeholder="cloud, domain, vize..." />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="app.closeJournalModal()">Iptal</button>
           <button type="submit" class="btn-primary">Kaydet</button>
         </div>
       </form>

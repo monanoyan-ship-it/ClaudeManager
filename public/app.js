@@ -129,6 +129,7 @@ const app = {
       prompts: () => this.loadPrompts(),
       patterns: () => this.loadPatterns(),
       notes: () => this.loadNotes(),
+      journal: () => this.loadJournal(),
       roadmap: () => this.loadRoadmap(),
       tools: () => this.loadToolUses(),
       analytics: () => this.loadAnalytics()
@@ -409,6 +410,100 @@ const app = {
     if (!confirm('Bu not silinecek. Emin misiniz?')) return;
     await this.api(`/notes/${noteId}`, { method: 'DELETE' });
     this.loadNotes();
+  },
+
+  // --- Journal ---
+  journalFilter: '',
+  async loadJournal() {
+    let url = `/projects/${this.currentProject.id}/journal`;
+    if (this.journalFilter) url += `?category=${this.journalFilter}`;
+    const { data } = await this.api(url);
+    const el = document.getElementById('journalList');
+    if (!data.length) {
+      el.innerHTML = '<div class="empty-state">Henuz gunluk girisi yok. "Yeni Giris" ile baslayin.</div>';
+      return;
+    }
+    el.innerHTML = data.map(j => `
+      <div class="pattern-card">
+        <div class="pattern-header">
+          <div>
+            <span class="pattern-title">${this.esc(j.title)}</span>
+            ${j.category ? `<span class="badge badge-general">${this.esc(j.category)}</span>` : ''}
+            ${j.tags ? `<span class="pattern-meta">${this.esc(j.tags)}</span>` : ''}
+          </div>
+          <div class="pattern-meta">
+            ${this.formatDateShort(j.entry_date)}
+          </div>
+        </div>
+        ${j.content ? `<div class="pattern-desc">${this.esc(j.content)}</div>` : ''}
+        <div class="pattern-actions">
+          <button class="btn-sm" onclick="app.editJournalEntry(${j.id})">Duzenle</button>
+          <button class="btn-sm btn-danger" onclick="app.deleteJournalEntry(${j.id})">Sil</button>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  filterJournal(category) {
+    this.journalFilter = category;
+    document.querySelectorAll('[data-journal-cat]').forEach(p =>
+      p.classList.toggle('active', p.dataset.journalCat === category)
+    );
+    this.loadJournal();
+  },
+
+  showJournalModal(entry = null) {
+    document.getElementById('journalModalTitle').textContent = entry ? 'Gunluk Girisi Duzenle' : 'Yeni Gunluk Girisi';
+    document.getElementById('journalId').value = entry ? entry.id : '';
+    document.getElementById('journalDate').value = entry ? (entry.entry_date || '').split('T')[0] : new Date().toISOString().split('T')[0];
+    document.getElementById('journalTitle').value = entry ? entry.title : '';
+    document.getElementById('journalContent').value = entry ? (entry.content || '') : '';
+    document.getElementById('journalCategory').value = entry ? (entry.category || '') : '';
+    document.getElementById('journalTags').value = entry ? (entry.tags || '') : '';
+    document.getElementById('journalModal').classList.add('active');
+  },
+
+  closeJournalModal() {
+    document.getElementById('journalModal').classList.remove('active');
+  },
+
+  async saveJournalEntry(e) {
+    e.preventDefault();
+    const id = document.getElementById('journalId').value;
+    const body = {
+      title: document.getElementById('journalTitle').value,
+      content: document.getElementById('journalContent').value || null,
+      category: document.getElementById('journalCategory').value || null,
+      tags: document.getElementById('journalTags').value || null,
+      entry_date: document.getElementById('journalDate').value
+    };
+
+    if (id) {
+      await this.api(`/journal/${id}`, { method: 'PUT', body });
+    } else {
+      await this.api(`/projects/${this.currentProject.id}/journal`, { method: 'POST', body });
+    }
+
+    this.closeJournalModal();
+    this.loadJournal();
+  },
+
+  async editJournalEntry(entryId) {
+    const { data } = await this.api(`/projects/${this.currentProject.id}/journal`);
+    const entry = data.find(j => j.id === entryId);
+    if (entry) this.showJournalModal(entry);
+  },
+
+  async deleteJournalEntry(entryId) {
+    if (!confirm('Bu gunluk girisi silinecek. Emin misiniz?')) return;
+    await this.api(`/journal/${entryId}`, { method: 'DELETE' });
+    this.loadJournal();
+  },
+
+  formatDateShort(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
+    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   },
 
   // --- Tool Uses ---

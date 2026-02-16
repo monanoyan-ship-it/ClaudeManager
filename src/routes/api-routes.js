@@ -6,6 +6,7 @@ const analyticsService = require('../services/analytics-service');
 const searchService = require('../services/search-service');
 const planService = require('../services/plan-service');
 const noteService = require('../services/note-service');
+const journalService = require('../services/journal-service');
 const { normalizePath } = require('../utils/path-normalizer');
 
 const router = express.Router();
@@ -129,6 +130,7 @@ router.delete('/projects/:id', async (req, res, next) => {
     const pCount = patternCount.length ? patternCount[0].values[0][0] : 0;
 
     // Delete related data
+    await db.run('DELETE FROM journal WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM project_notes WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM tasks WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM phases WHERE project_id = ?', [projectId]);
@@ -164,7 +166,7 @@ router.post('/projects/merge', async (req, res, next) => {
     }
 
     const db = await getDb();
-    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks', 'project_notes'];
+    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks', 'project_notes', 'journal'];
     const moved = {};
 
     for (const sourceId of source_ids) {
@@ -203,6 +205,10 @@ router.post('/patterns', async (req, res, next) => {
     if (!project_id || !type || !title) {
       return res.status(400).json({ error: 'project_id, type, and title are required' });
     }
+    const allowedTypes = ['rule', 'mistake', 'preference'];
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({ error: `Invalid type "${type}". Allowed: ${allowedTypes.join(', ')}` });
+    }
     const id = await patternService.addPattern(
       project_id, type, title, description || null, null, confidence || 1.0
     );
@@ -215,6 +221,12 @@ router.post('/patterns', async (req, res, next) => {
 router.put('/patterns/:id', async (req, res, next) => {
   try {
     const { type, title, description, confidence } = req.body;
+    if (type !== undefined) {
+      const allowedTypes = ['rule', 'mistake', 'preference'];
+      if (!allowedTypes.includes(type)) {
+        return res.status(400).json({ error: `Invalid type "${type}". Allowed: ${allowedTypes.join(', ')}` });
+      }
+    }
     await patternService.updatePattern(parseInt(req.params.id), { type, title, description, confidence });
     const pattern = await patternService.getPatternById(parseInt(req.params.id));
     res.json(pattern);
@@ -373,6 +385,49 @@ router.put('/notes/:id', async (req, res, next) => {
 router.delete('/notes/:id', async (req, res, next) => {
   try {
     await noteService.deleteNote(parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// --- Journal Endpoints ---
+
+// GET /api/projects/:id/journal — Journal entries for project
+router.get('/projects/:id/journal', async (req, res, next) => {
+  try {
+    const category = req.query.category || null;
+    const startDate = req.query.start || null;
+    const endDate = req.query.end || null;
+    const entries = await journalService.getEntries(parseInt(req.params.id), category, startDate, endDate);
+    res.json({ data: entries });
+  } catch (err) { next(err); }
+});
+
+// POST /api/projects/:id/journal — Create new journal entry
+router.post('/projects/:id/journal', async (req, res, next) => {
+  try {
+    const { title, content, category, tags, entry_date } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    const id = await journalService.createEntry(parseInt(req.params.id), title, content, category, tags, entry_date);
+    const entry = await journalService.getEntryById(id);
+    res.status(201).json(entry);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/journal/:id — Update journal entry
+router.put('/journal/:id', async (req, res, next) => {
+  try {
+    await journalService.updateEntry(parseInt(req.params.id), req.body);
+    const entry = await journalService.getEntryById(parseInt(req.params.id));
+    res.json(entry);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/journal/:id — Delete journal entry
+router.delete('/journal/:id', async (req, res, next) => {
+  try {
+    await journalService.deleteEntry(parseInt(req.params.id));
     res.json({ success: true });
   } catch (err) { next(err); }
 });
@@ -573,6 +628,18 @@ router.get('/guide', async (req, res, next) => {
       lines.push('');
       lines.push('Gorev durumu guncelle:');
       lines.push(`  curl -X PUT ${base}/api/tasks/GOREV_ID -H "Content-Type: application/json" -d '{"status":"completed"}'`);
+      lines.push('');
+      lines.push('Gunluk girislerini oku:');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/journal`);
+      lines.push('');
+      lines.push('Yeni gunluk girisi:');
+      lines.push(`  curl -X POST ${base}/api/projects/${projectId}/journal -H "Content-Type: application/json" -d '{"title":"BASLIK","content":"ICERIK","category":"genel|teknik|karar|arastirma"}'`);
+      lines.push('');
+      lines.push('Notlari oku (hesap bilgileri, API key\'ler, sifreler, konfigurasyonlar burada):');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/notes`);
+      lines.push('');
+      lines.push('Yeni not olustur:');
+      lines.push(`  curl -X POST ${base}/api/projects/${projectId}/notes -H "Content-Type: application/json" -d '{"title":"BASLIK","content":"ICERIK","category":"teknik"}'`);
     } else {
       lines.push('## Proje Bulunamadi');
       lines.push('');
@@ -584,9 +651,13 @@ router.get('/guide', async (req, res, next) => {
 
     lines.push('');
     lines.push('## Onemli Kurallar');
+    lines.push('- Pattern tipleri: sadece "rule", "mistake", "preference" kabul edilir ("pattern" tipi kaldirildi)');
     lines.push('- Kullanici bir hata yaptigini soylerse, hatani "mistake" olarak kaydet');
     lines.push('- Kullanici bir tercih belirtirse, "preference" olarak kaydet');
     lines.push('- Tekrarlanan bir pattern fark edersen, "rule" olarak kaydet');
+    lines.push('- Gunluk nitelikli bilgiler (kredi durumu, domain, vize vs.) icin journal endpoint\'ini kullan');
+    lines.push('- Hesap bilgileri, API key\'ler, sifreler, krediler gibi kritik bilgileri Notes\'a kaydet (category: teknik)');
+    lines.push('- Yeni bir hesap/servis olusturulursa bilgileri hemen Notes\'a yaz - sonra unutulur');
     lines.push('- Her session basinda pattern\'leri oku ve uygula');
     lines.push('');
     lines.push(`Dashboard: ${base}/`);

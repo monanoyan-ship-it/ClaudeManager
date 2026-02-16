@@ -96,6 +96,19 @@ CREATE TABLE IF NOT EXISTS project_notes (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Journal entries
+CREATE TABLE IF NOT EXISTS journal (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id),
+  entry_date DATE DEFAULT CURRENT_DATE,
+  title TEXT NOT NULL,
+  content TEXT,
+  category TEXT,
+  tags TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
@@ -110,3 +123,5 @@ CREATE INDEX IF NOT EXISTS idx_phases_project ON phases(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_phase ON tasks(phase_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id);
+CREATE INDEX IF NOT EXISTS idx_journal_project ON journal(project_id);
+CREATE INDEX IF NOT EXISTS idx_journal_date ON journal(entry_date);
