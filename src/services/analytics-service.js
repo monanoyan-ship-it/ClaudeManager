@@ -4,7 +4,7 @@ const { detectFrustration } = require('../utils/analyzer');
 class AnalyticsService {
   async getFrustrationTrends(projectId, days = 30) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT content, created_at FROM prompts
        WHERE project_id = ? AND role = 'user'
          AND created_at >= datetime('now', '-' || ? || ' days')
@@ -16,7 +16,8 @@ class AnalyticsService {
     // Group by date and calculate average frustration
     const dailyScores = {};
     for (const row of result[0].values) {
-      const date = row[1].split(' ')[0]; // YYYY-MM-DD
+      const dateVal = row[1];
+      const date = (dateVal instanceof Date) ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0].split(' ')[0];
       const score = detectFrustration(row[0]);
       if (!dailyScores[date]) {
         dailyScores[date] = { total: 0, count: 0 };
@@ -34,7 +35,7 @@ class AnalyticsService {
 
   async getToolUsageBreakdown(projectId) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT tool_name, COUNT(*) as count, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count
        FROM tool_uses WHERE project_id = ?
        GROUP BY tool_name ORDER BY count DESC`,
@@ -51,7 +52,7 @@ class AnalyticsService {
 
   async getCategoryDistribution(projectId) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT category, COUNT(*) as count FROM prompts
        WHERE project_id = ? AND category IS NOT NULL
        GROUP BY category ORDER BY count DESC`,
@@ -66,7 +67,7 @@ class AnalyticsService {
 
   async getPatternStats(projectId) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT type, COUNT(*) as count, AVG(confidence) as avg_confidence
        FROM patterns WHERE project_id = ? AND is_active = 1
        GROUP BY type ORDER BY count DESC`,
@@ -82,7 +83,7 @@ class AnalyticsService {
 
   async getActivityTimeline(projectId, days = 30) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT DATE(created_at) as date, COUNT(*) as count
        FROM prompts WHERE project_id = ?
          AND created_at >= datetime('now', '-' || ? || ' days')
@@ -91,7 +92,7 @@ class AnalyticsService {
     );
     if (!result.length) return [];
     return result[0].values.map(row => ({
-      date: row[0],
+      date: (row[0] instanceof Date) ? row[0].toISOString().split('T')[0] : row[0],
       count: row[1]
     }));
   }

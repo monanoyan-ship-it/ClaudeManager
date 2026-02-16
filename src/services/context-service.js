@@ -2,18 +2,20 @@ const logService = require('./log-service');
 const patternService = require('./pattern-service');
 const searchService = require('./search-service');
 const planService = require('./plan-service');
+const noteService = require('./note-service');
 const { detectFrustration } = require('../utils/analyzer');
 
 class ContextService {
   async getProjectContext(projectName, projectPath) {
     const projectId = await logService.ensureProject(projectName, projectPath);
 
-    const [patterns, recentPrompts, stats, topics, allTasks] = await Promise.all([
+    const [patterns, recentPrompts, stats, topics, allTasks, pinnedNotes] = await Promise.all([
       patternService.getPatterns(projectId),
       logService.getRecentPrompts(projectId, 10),
       logService.getSessionStats(projectId),
       searchService.getFrequentTopics(projectId, 5),
-      planService.getTasks(projectId).catch(() => [])
+      planService.getTasks(projectId).catch(() => []),
+      noteService.getPinnedNotes(projectId).catch(() => [])
     ]);
 
     const rules = patterns.filter(p => p.type === 'rule');
@@ -27,6 +29,7 @@ class ContextService {
       rules: rules.map(r => `- ${r.title}${r.description ? ': ' + r.description : ''}`),
       mistakes: mistakes.map(m => `- ${m.title}${m.description ? ': ' + m.description : ''}`),
       preferences: preferences.map(p => `- ${p.title}${p.description ? ': ' + p.description : ''}`),
+      pinned_notes: pinnedNotes,
       active_tasks: activeTasks,
       recent_topics: topics.map(t => t.tag),
       recent_history: recentPrompts.slice(0, 5).map(p => ({
@@ -132,6 +135,14 @@ class ContextService {
       lines.push('');
       lines.push('## User Preferences:');
       lines.push(...context.preferences);
+    }
+
+    if (context.pinned_notes && context.pinned_notes.length > 0) {
+      lines.push('');
+      lines.push('## Project Notes:');
+      for (const note of context.pinned_notes) {
+        lines.push(`- **${note.title}**${note.content ? ': ' + note.content : ''}`);
+      }
     }
 
     if (context.active_tasks && context.active_tasks.length > 0) {

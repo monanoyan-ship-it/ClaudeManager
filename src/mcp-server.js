@@ -16,19 +16,19 @@ const server = new McpServer({
 async function resolveProject(project) {
   const db = await getDb();
   // Try by name first
-  let result = db.exec(`SELECT id, name, path FROM projects WHERE name = ?`, [project]);
+  let result = await db.exec(`SELECT id, name, path FROM projects WHERE name = ?`, [project]);
   if (result.length > 0 && result[0].values.length > 0) {
     const row = result[0].values[0];
     return { id: row[0], name: row[1], path: row[2] };
   }
   // Try by path
-  result = db.exec(`SELECT id, name, path FROM projects WHERE path = ?`, [project]);
+  result = await db.exec(`SELECT id, name, path FROM projects WHERE path = ?`, [project]);
   if (result.length > 0 && result[0].values.length > 0) {
     const row = result[0].values[0];
     return { id: row[0], name: row[1], path: row[2] };
   }
   // Try partial match
-  result = db.exec(`SELECT id, name, path FROM projects WHERE name LIKE ? OR path LIKE ? LIMIT 1`, [`%${project}%`, `%${project}%`]);
+  result = await db.exec(`SELECT id, name, path FROM projects WHERE name ILIKE ? OR path ILIKE ? LIMIT 1`, [`%${project}%`, `%${project}%`]);
   if (result.length > 0 && result[0].values.length > 0) {
     const row = result[0].values[0];
     return { id: row[0], name: row[1], path: row[2] };

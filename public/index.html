@@ -50,6 +50,7 @@
         <button class="tab" data-tab="sessions" onclick="app.switchTab('sessions')">Session'lar</button>
         <button class="tab" data-tab="prompts" onclick="app.switchTab('prompts')">Prompt'lar</button>
         <button class="tab" data-tab="patterns" onclick="app.switchTab('patterns')">Pattern'ler</button>
+        <button class="tab" data-tab="notes" onclick="app.switchTab('notes')">Notlar</button>
         <button class="tab" data-tab="roadmap" onclick="app.switchTab('roadmap')">Yol Haritasi</button>
         <button class="tab" data-tab="tools" onclick="app.switchTab('tools')">Tool Kullanimi</button>
         <button class="tab" data-tab="analytics" onclick="app.switchTab('analytics')">Analitik</button>
@@ -98,6 +99,21 @@
           <button class="btn-primary" onclick="app.showPatternModal()">+ Yeni Pattern</button>
         </div>
         <div id="patternsList"></div>
+      </div>
+
+      <!-- Notes Tab -->
+      <div class="tab-content" id="tab-notes">
+        <div class="patterns-header">
+          <div class="pattern-filters">
+            <button class="pill active" data-note-cat="" onclick="app.filterNotes('')">Tumu</button>
+            <button class="pill" data-note-cat="genel" onclick="app.filterNotes('genel')">Genel</button>
+            <button class="pill" data-note-cat="teknik" onclick="app.filterNotes('teknik')">Teknik</button>
+            <button class="pill" data-note-cat="karar" onclick="app.filterNotes('karar')">Karar</button>
+            <button class="pill" data-note-cat="todo" onclick="app.filterNotes('todo')">Todo</button>
+          </div>
+          <button class="btn-primary" onclick="app.showNoteModal()">+ Yeni Not</button>
+        </div>
+        <div id="notesList"></div>
       </div>
 
       <!-- Roadmap Tab -->
@@ -332,6 +348,44 @@
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" onclick="app.closeTaskModal()">Iptal</button>
+          <button type="submit" class="btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Note Modal -->
+  <div class="modal-overlay" id="noteModal">
+    <div class="modal">
+      <h3 id="noteModalTitle">Yeni Not</h3>
+      <form id="noteForm" onsubmit="app.saveNote(event)">
+        <input type="hidden" id="noteId" />
+        <div class="form-group">
+          <label>Baslik</label>
+          <input type="text" id="noteTitle" required />
+        </div>
+        <div class="form-group">
+          <label>Icerik</label>
+          <textarea id="noteContent" rows="5"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Kategori</label>
+          <select id="noteCategory">
+            <option value="">Yok</option>
+            <option value="genel">Genel</option>
+            <option value="teknik">Teknik</option>
+            <option value="karar">Karar</option>
+            <option value="todo">Todo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="notePinned" />
+            Pinle (session-start'ta Claude'a goster)
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="app.closeNoteModal()">Iptal</button>
           <button type="submit" class="btn-primary">Kaydet</button>
         </div>
       </form>

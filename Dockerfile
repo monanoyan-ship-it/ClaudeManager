@@ -7,8 +7,6 @@ RUN npm install --production
 
 COPY . .
 
-RUN mkdir -p /app/data
-
 EXPOSE 41847
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

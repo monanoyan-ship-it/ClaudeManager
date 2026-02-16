@@ -5,6 +5,7 @@ const patternService = require('../services/pattern-service');
 const analyticsService = require('../services/analytics-service');
 const searchService = require('../services/search-service');
 const planService = require('../services/plan-service');
+const noteService = require('../services/note-service');
 const { normalizePath } = require('../utils/path-normalizer');
 
 const router = express.Router();
@@ -13,7 +14,7 @@ const router = express.Router();
 router.get('/projects', async (req, res, next) => {
   try {
     const db = await getDb();
-    const result = db.exec(`
+    const result = await db.exec(`
       SELECT p.id, p.name, p.path, p.created_at,
         (SELECT COUNT(*) FROM sessions WHERE project_id = p.id) as session_count,
         (SELECT COUNT(*) FROM prompts WHERE project_id = p.id) as prompt_count,
@@ -35,7 +36,7 @@ router.get('/projects', async (req, res, next) => {
 router.get('/projects/:id', async (req, res, next) => {
   try {
     const db = await getDb();
-    const result = db.exec(`SELECT id, name, path, description, created_at FROM projects WHERE id = ?`,
+    const result = await db.exec(`SELECT id, name, path, description, created_at FROM projects WHERE id = ?`,
       [req.params.id]);
     if (!result.length || !result[0].values.length) {
       return res.status(404).json({ error: 'Project not found' });
@@ -117,28 +118,29 @@ router.delete('/projects/:id', async (req, res, next) => {
     const projectId = parseInt(req.params.id);
     const deletePatterns = req.query.delete_patterns === 'true';
 
-    const exists = db.exec('SELECT id, name FROM projects WHERE id = ?', [projectId]);
+    const exists = await db.exec('SELECT id, name FROM projects WHERE id = ?', [projectId]);
     if (!exists.length || !exists[0].values.length) {
       return res.status(404).json({ error: 'Project not found' });
     }
     const projectName = exists[0].values[0][1];
 
     // Count what will be deleted (for confirmation)
-    const patternCount = db.exec('SELECT COUNT(*) FROM patterns WHERE project_id = ?', [projectId]);
+    const patternCount = await db.exec('SELECT COUNT(*) FROM patterns WHERE project_id = ?', [projectId]);
     const pCount = patternCount.length ? patternCount[0].values[0][0] : 0;
 
     // Delete related data
-    db.run('DELETE FROM tasks WHERE project_id = ?', [projectId]);
-    db.run('DELETE FROM phases WHERE project_id = ?', [projectId]);
-    db.run('DELETE FROM tool_uses WHERE project_id = ?', [projectId]);
-    db.run('DELETE FROM prompts WHERE project_id = ?', [projectId]);
-    db.run('DELETE FROM sessions WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM project_notes WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM tasks WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM phases WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM tool_uses WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM prompts WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM sessions WHERE project_id = ?', [projectId]);
 
     if (deletePatterns) {
-      db.run('DELETE FROM patterns WHERE project_id = ?', [projectId]);
+      await db.run('DELETE FROM patterns WHERE project_id = ?', [projectId]);
     }
 
-    db.run('DELETE FROM projects WHERE id = ?', [projectId]);
+    await db.run('DELETE FROM projects WHERE id = ?', [projectId]);
 
     save();
     res.json({
@@ -162,30 +164,30 @@ router.post('/projects/merge', async (req, res, next) => {
     }
 
     const db = await getDb();
-    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks'];
+    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks', 'project_notes'];
     const moved = {};
 
     for (const sourceId of source_ids) {
       // Verify source project exists
-      const exists = db.exec(`SELECT id, name FROM projects WHERE id = ?`, [sourceId]);
+      const exists = await db.exec(`SELECT id, name FROM projects WHERE id = ?`, [sourceId]);
       if (!exists.length || !exists[0].values.length) continue;
 
       const sourceName = exists[0].values[0][1];
       moved[sourceName] = {};
 
       for (const table of tables) {
-        const countResult = db.exec(
+        const countResult = await db.exec(
           `SELECT COUNT(*) FROM ${table} WHERE project_id = ?`, [sourceId]
         );
         const count = countResult.length ? countResult[0].values[0][0] : 0;
         if (count > 0) {
-          db.run(`UPDATE ${table} SET project_id = ? WHERE project_id = ?`,
+          await db.run(`UPDATE ${table} SET project_id = ? WHERE project_id = ?`,
             [target_id, sourceId]);
         }
         moved[sourceName][table] = count;
       }
 
-      db.run(`DELETE FROM projects WHERE id = ?`, [sourceId]);
+      await db.run(`DELETE FROM projects WHERE id = ?`, [sourceId]);
     }
 
     save();
@@ -251,7 +253,7 @@ router.get('/projects/:id/export', async (req, res, next) => {
   try {
     const db = await getDb();
     const projectId = parseInt(req.params.id);
-    const result = db.exec('SELECT id, name, path FROM projects WHERE id = ?', [projectId]);
+    const result = await db.exec('SELECT id, name, path FROM projects WHERE id = ?', [projectId]);
     if (!result.length || !result[0].values.length) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -331,6 +333,47 @@ router.get('/projects/:id/export', async (req, res, next) => {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.type('text/markdown').send(content);
     }
+  } catch (err) { next(err); }
+});
+
+// --- Notes Endpoints ---
+
+// GET /api/projects/:id/notes — Notes for project
+router.get('/projects/:id/notes', async (req, res, next) => {
+  try {
+    const category = req.query.category || null;
+    const notes = await noteService.getNotes(parseInt(req.params.id), category);
+    res.json({ data: notes });
+  } catch (err) { next(err); }
+});
+
+// POST /api/projects/:id/notes — Create new note
+router.post('/projects/:id/notes', async (req, res, next) => {
+  try {
+    const { title, content, category } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    const id = await noteService.createNote(parseInt(req.params.id), title, content, category);
+    const note = await noteService.getNoteById(id);
+    res.status(201).json(note);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/notes/:id — Update note
+router.put('/notes/:id', async (req, res, next) => {
+  try {
+    await noteService.updateNote(parseInt(req.params.id), req.body);
+    const note = await noteService.getNoteById(parseInt(req.params.id));
+    res.json(note);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/notes/:id — Delete note
+router.delete('/notes/:id', async (req, res, next) => {
+  try {
+    await noteService.deleteNote(parseInt(req.params.id));
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
@@ -440,7 +483,7 @@ router.get('/guide', async (req, res, next) => {
 
     if (cwd) {
       const normalizedCwd = normalizePath(cwd);
-      const result = db.exec('SELECT id, name, path FROM projects WHERE path = ?', [normalizedCwd]);
+      const result = await db.exec('SELECT id, name, path FROM projects WHERE path = ?', [normalizedCwd]);
       if (result.length && result[0].values.length) {
         const row = result[0].values[0];
         project = { id: row[0], name: row[1], path: row[2] };

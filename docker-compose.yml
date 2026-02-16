@@ -1,15 +1,40 @@
 services:
+  # PostgreSQL - sadece local PG yoksa kullan
+  # Local PG kuruluysa: npm start ile dogrudan calistir
+  postgres:
+    image: postgres:16-alpine
+    container_name: claude-manager-db
+    profiles: ["with-db"]
+    environment:
+      POSTGRES_DB: claude_manager
+      POSTGRES_USER: claude_manager
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-claude_manager}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claude_manager -d claude_manager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   claude-manager:
     build: .
     container_name: claude-manager
     ports:
       - "41847:41847"
-    volumes:
-      - claude-manager-data:/app/data
     environment:
       - PORT=41847
-      - DB_PATH=/app/data/claude_manager.db
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-claude_manager}
+      - DB_USER=${DB_USER:-claude_manager}
+      - DB_PASSWORD=${DB_PASSWORD:-1123Azs+-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:
-  claude-manager-data:
+  pgdata:

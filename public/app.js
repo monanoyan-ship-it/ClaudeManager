@@ -128,6 +128,7 @@ const app = {
       sessions: () => this.loadSessions(),
       prompts: () => this.loadPrompts(),
       patterns: () => this.loadPatterns(),
+      notes: () => this.loadNotes(),
       roadmap: () => this.loadRoadmap(),
       tools: () => this.loadToolUses(),
       analytics: () => this.loadAnalytics()
@@ -317,6 +318,97 @@ const app = {
     if (!confirm('Bu pattern silinecek. Emin misiniz?')) return;
     await this.api(`/patterns/${id}`, { method: 'DELETE' });
     this.loadPatterns();
+  },
+
+  // --- Notes ---
+  noteFilter: '',
+  async loadNotes() {
+    let url = `/projects/${this.currentProject.id}/notes`;
+    if (this.noteFilter) url += `?category=${this.noteFilter}`;
+    const { data } = await this.api(url);
+    const el = document.getElementById('notesList');
+    if (!data.length) {
+      el.innerHTML = '<div class="empty-state">Henuz not yok. "Yeni Not" ile baslayin.</div>';
+      return;
+    }
+    el.innerHTML = data.map(n => `
+      <div class="pattern-card ${n.is_pinned ? 'rule' : ''}">
+        <div class="pattern-header">
+          <div>
+            <span class="pattern-title">${n.is_pinned ? '&#128204; ' : ''}${this.esc(n.title)}</span>
+            ${n.category ? `<span class="badge badge-general">${this.esc(n.category)}</span>` : ''}
+          </div>
+          <div class="pattern-meta">
+            ${this.formatDate(n.updated_at)}
+          </div>
+        </div>
+        ${n.content ? `<div class="pattern-desc">${this.esc(n.content)}</div>` : ''}
+        <div class="pattern-actions">
+          <button class="btn-sm" onclick="app.togglePin(${n.id}, ${n.is_pinned})">${n.is_pinned ? 'Unpin' : 'Pinle'}</button>
+          <button class="btn-sm" onclick="app.editNote(${n.id})">Duzenle</button>
+          <button class="btn-sm btn-danger" onclick="app.deleteNote(${n.id})">Sil</button>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  filterNotes(category) {
+    this.noteFilter = category;
+    document.querySelectorAll('[data-note-cat]').forEach(p =>
+      p.classList.toggle('active', p.dataset.noteCat === category)
+    );
+    this.loadNotes();
+  },
+
+  showNoteModal(note = null) {
+    document.getElementById('noteModalTitle').textContent = note ? 'Not Duzenle' : 'Yeni Not';
+    document.getElementById('noteId').value = note ? note.id : '';
+    document.getElementById('noteTitle').value = note ? note.title : '';
+    document.getElementById('noteContent').value = note ? (note.content || '') : '';
+    document.getElementById('noteCategory').value = note ? (note.category || '') : '';
+    document.getElementById('notePinned').checked = note ? !!note.is_pinned : false;
+    document.getElementById('noteModal').classList.add('active');
+  },
+
+  closeNoteModal() {
+    document.getElementById('noteModal').classList.remove('active');
+  },
+
+  async saveNote(e) {
+    e.preventDefault();
+    const id = document.getElementById('noteId').value;
+    const body = {
+      title: document.getElementById('noteTitle').value,
+      content: document.getElementById('noteContent').value || null,
+      category: document.getElementById('noteCategory').value || null,
+      is_pinned: document.getElementById('notePinned').checked ? 1 : 0
+    };
+
+    if (id) {
+      await this.api(`/notes/${id}`, { method: 'PUT', body });
+    } else {
+      await this.api(`/projects/${this.currentProject.id}/notes`, { method: 'POST', body });
+    }
+
+    this.closeNoteModal();
+    this.loadNotes();
+  },
+
+  async editNote(noteId) {
+    const { data } = await this.api(`/projects/${this.currentProject.id}/notes`);
+    const note = data.find(n => n.id === noteId);
+    if (note) this.showNoteModal(note);
+  },
+
+  async togglePin(noteId, currentPin) {
+    await this.api(`/notes/${noteId}`, { method: 'PUT', body: { is_pinned: currentPin ? 0 : 1 } });
+    this.loadNotes();
+  },
+
+  async deleteNote(noteId) {
+    if (!confirm('Bu not silinecek. Emin misiniz?')) return;
+    await this.api(`/notes/${noteId}`, { method: 'DELETE' });
+    this.loadNotes();
   },
 
   // --- Tool Uses ---

@@ -6,25 +6,23 @@ class LogService {
   async ensureProject(name, projectPath) {
     const db = await getDb();
     const normalizedPath = normalizePath(projectPath);
-    const existing = db.exec(`SELECT id FROM projects WHERE path = ?`, [normalizedPath]);
+    const existing = await db.exec(`SELECT id FROM projects WHERE path = ?`, [normalizedPath]);
     if (existing.length > 0 && existing[0].values.length > 0) {
       return existing[0].values[0][0];
     }
-    db.run(`INSERT INTO projects (name, path) VALUES (?, ?)`, [name, normalizedPath]);
-    save();
-    const result = db.exec(`SELECT last_insert_rowid()`);
+    await db.run(`INSERT INTO projects (name, path) VALUES (?, ?)`, [name, normalizedPath]);
+    const result = await db.exec(`SELECT last_insert_rowid()`);
     return result[0].values[0][0];
   }
 
   async getOrCreateSession(projectId, sessionId) {
     const db = await getDb();
-    const existing = db.exec(`SELECT id FROM sessions WHERE session_id = ?`, [sessionId]);
+    const existing = await db.exec(`SELECT id FROM sessions WHERE session_id = ?`, [sessionId]);
     if (existing.length > 0 && existing[0].values.length > 0) {
       return existing[0].values[0][0];
     }
-    db.run(`INSERT INTO sessions (project_id, session_id) VALUES (?, ?)`, [projectId, sessionId]);
-    save();
-    const result = db.exec(`SELECT last_insert_rowid()`);
+    await db.run(`INSERT INTO sessions (project_id, session_id) VALUES (?, ?)`, [projectId, sessionId]);
+    const result = await db.exec(`SELECT last_insert_rowid()`);
     return result[0].values[0][0];
   }
 
@@ -33,46 +31,42 @@ class LogService {
     const autoCategory = category || categorizePrompt(content);
     const autoTags = tags || JSON.stringify(extractTags(content));
 
-    db.run(
+    await db.run(
       `INSERT INTO prompts (session_id, project_id, role, content, category, tags) VALUES (?, ?, ?, ?, ?, ?)`,
       [sessionDbId, projectId, role, content, autoCategory, autoTags]
     );
 
-    // Update FTS
-    const idResult = db.exec(`SELECT last_insert_rowid()`);
+    const idResult = await db.exec(`SELECT last_insert_rowid()`);
     const promptId = idResult[0].values[0][0];
     try {
-      db.run(`INSERT INTO prompts_fts (rowid, content, tags) VALUES (?, ?, ?)`,
+      await db.run(`INSERT INTO prompts_fts (rowid, content, tags) VALUES (?, ?, ?)`,
         [promptId, content, autoTags]);
     } catch (e) {
       // FTS insert failure is non-critical
     }
 
-    save();
     return promptId;
   }
 
   async logToolUse(projectId, sessionDbId, toolName, toolInput, filePath, success) {
     const db = await getDb();
-    db.run(
+    await db.run(
       `INSERT INTO tool_uses (session_id, project_id, tool_name, tool_input, file_path, success) VALUES (?, ?, ?, ?, ?, ?)`,
       [sessionDbId, projectId, toolName, JSON.stringify(toolInput), filePath, success ? 1 : 0]
     );
-    save();
   }
 
   async endSession(sessionId, summary) {
     const db = await getDb();
-    db.run(
+    await db.run(
       `UPDATE sessions SET ended_at = CURRENT_TIMESTAMP, summary = ? WHERE session_id = ?`,
       [summary, sessionId]
     );
-    save();
   }
 
   async getRecentPrompts(projectId, limit = 20) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT role, content, category, tags, created_at FROM prompts WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
       [projectId, limit]
     );
@@ -85,7 +79,7 @@ class LogService {
 
   async getRecentToolUses(projectId, limit = 20) {
     const db = await getDb();
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT tool_name, file_path, success, created_at FROM tool_uses WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
       [projectId, limit]
     );
@@ -98,7 +92,7 @@ class LogService {
 
   async getSessionStats(projectId) {
     const db = await getDb();
-    const result = db.exec(`
+    const result = await db.exec(`
       SELECT
         COUNT(DISTINCT s.id) as session_count,
         COUNT(p.id) as prompt_count,
@@ -112,6 +106,7 @@ class LogService {
     const row = result[0].values[0];
     return { session_count: row[0], prompt_count: row[1], tool_count: row[2] };
   }
+
   async getPromptsWithPagination(projectId, page = 1, limit = 20, filters = {}) {
     const db = await getDb();
     const offset = (page - 1) * limit;
@@ -131,16 +126,16 @@ class LogService {
       params.push(filters.endDate);
     }
     if (filters.search) {
-      whereClauses.push('p.content LIKE ?');
+      whereClauses.push('p.content ILIKE ?');
       params.push(`%${filters.search}%`);
     }
 
     const where = whereClauses.join(' AND ');
 
-    const countResult = db.exec(`SELECT COUNT(*) FROM prompts p WHERE ${where}`, params);
+    const countResult = await db.exec(`SELECT COUNT(*) FROM prompts p WHERE ${where}`, params);
     const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
 
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT p.id, p.role, p.content, p.category, p.tags, p.created_at, s.session_id
        FROM prompts p
        LEFT JOIN sessions s ON s.id = p.session_id
@@ -161,12 +156,12 @@ class LogService {
     const db = await getDb();
     const offset = (page - 1) * limit;
 
-    const countResult = db.exec(
+    const countResult = await db.exec(
       `SELECT COUNT(*) FROM sessions WHERE project_id = ?`, [projectId]
     );
     const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
 
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT s.id, s.session_id, s.started_at, s.ended_at, s.summary,
               (SELECT COUNT(*) FROM prompts WHERE session_id = s.id) as prompt_count,
               (SELECT COUNT(*) FROM tool_uses WHERE session_id = s.id) as tool_count
@@ -188,12 +183,12 @@ class LogService {
     const db = await getDb();
     const offset = (page - 1) * limit;
 
-    const countResult = db.exec(
+    const countResult = await db.exec(
       `SELECT COUNT(*) FROM tool_uses WHERE project_id = ?`, [projectId]
     );
     const total = countResult.length > 0 ? countResult[0].values[0][0] : 0;
 
-    const result = db.exec(
+    const result = await db.exec(
       `SELECT id, tool_name, file_path, success, created_at
        FROM tool_uses
        WHERE project_id = ?

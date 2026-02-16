@@ -1,6 +1,6 @@
 const path = require('path');
 const express = require('express');
-const { getDb, startAutoSave, stopAutoSave } = require('./db/init');
+const { getDb, startAutoSave, gracefulShutdown } = require('./db/init');
 const hookHandler = require('./hook-handler');
 const apiRoutes = require('./routes/api-routes');
 const errorHandler = require('./middleware/error-handler');
@@ -28,6 +28,12 @@ async function main() {
     res.json({ status: 'ok', service: 'claude-manager', version: '2.0.0' });
   });
 
+  // Graceful shutdown endpoint — force kill yerine bunu kullan
+  app.post('/api/shutdown', (req, res) => {
+    res.json({ status: 'shutting_down' });
+    gracefulShutdown('API shutdown endpoint');
+  });
+
   // Hook API routes
   app.use('/api/hooks', hookHandler);
 
@@ -38,11 +44,11 @@ async function main() {
   app.get('/api/stats', async (req, res) => {
     try {
       const db = await getDb();
-      const projects = db.exec(`SELECT id, name, path FROM projects ORDER BY name`);
-      const sessions = db.exec(`SELECT COUNT(*) FROM sessions`);
-      const prompts = db.exec(`SELECT COUNT(*) FROM prompts`);
-      const toolUses = db.exec(`SELECT COUNT(*) FROM tool_uses`);
-      const patterns = db.exec(`SELECT COUNT(*) FROM patterns WHERE is_active = 1`);
+      const projects = await db.exec(`SELECT id, name, path FROM projects ORDER BY name`);
+      const sessions = await db.exec(`SELECT COUNT(*) FROM sessions`);
+      const prompts = await db.exec(`SELECT COUNT(*) FROM prompts`);
+      const toolUses = await db.exec(`SELECT COUNT(*) FROM tool_uses`);
+      const patterns = await db.exec(`SELECT COUNT(*) FROM patterns WHERE is_active = 1`);
 
       res.json({
         projects: projects.length > 0 ? projects[0].values.map(r => ({ id: r[0], name: r[1], path: r[2] })) : [],
@@ -66,15 +72,7 @@ async function main() {
     console.log(`Dashboard: http://127.0.0.1:${PORT}/`);
   });
 
-  // Graceful shutdown
-  process.on('SIGINT', () => {
-    stopAutoSave();
-    process.exit(0);
-  });
-  process.on('SIGTERM', () => {
-    stopAutoSave();
-    process.exit(0);
-  });
+  // Graceful shutdown (SIGINT/SIGTERM init.js'de handle ediliyor)
 }
 
 main().catch(err => {
