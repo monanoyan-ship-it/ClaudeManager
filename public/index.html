@@ -140,6 +140,16 @@
             <button class="btn-secondary" onclick="app.showImportModal()">XML Import</button>
           </div>
         </div>
+        <div class="filters" id="roadmapFilters">
+          <select id="roadmapStatusFilter" onchange="app.applyRoadmapFilters()">
+            <option value="">Tum Durumlar</option>
+            <option value="planned">Planli</option>
+            <option value="in_progress">Devam Ediyor</option>
+            <option value="completed">Tamamlandi</option>
+            <option value="cancelled">Iptal</option>
+          </select>
+          <input type="text" id="roadmapTitleSearch" placeholder="Baslikta ara..." oninput="app.debounceRoadmapFilter()" />
+        </div>
         <div id="roadmapContent"></div>
       </div>
 
@@ -335,6 +345,10 @@
       <form id="taskForm" onsubmit="app.saveTask(event)">
         <input type="hidden" id="taskId" />
         <input type="hidden" id="taskPhaseId" />
+        <div class="form-group" id="taskPhaseSelectGroup" style="display:none;">
+          <label>Faz</label>
+          <select id="taskPhaseSelect"></select>
+        </div>
         <div class="form-group">
           <label>Gorev No</label>
           <input type="text" id="taskNo" placeholder="1.1" required />

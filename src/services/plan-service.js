@@ -37,14 +37,15 @@ async function getPhaseWithTasks(phaseId) {
   };
 
   const tasksResult = await db.exec(`
-    SELECT id, task_no, title, detail, risks, status, completed_at, sort_order, created_at, updated_at
+    SELECT id, task_no, title, detail, risks, status, completed_at, sort_order, created_at, updated_at, phase_id
     FROM tasks WHERE phase_id = ? ORDER BY sort_order, task_no
   `, [phaseId]);
 
   if (tasksResult.length) {
     phase.tasks = tasksResult[0].values.map(r => ({
       id: r[0], task_no: r[1], title: r[2], detail: r[3], risks: r[4],
-      status: r[5], completed_at: r[6], sort_order: r[7], created_at: r[8], updated_at: r[9]
+      status: r[5], completed_at: r[6], sort_order: r[7], created_at: r[8], updated_at: r[9],
+      phase_id: r[10]
     }));
   }
 
@@ -134,6 +135,7 @@ async function updateTask(taskId, updates) {
   if (updates.risks !== undefined) { fields.push('risks = ?'); values.push(updates.risks); }
   if (updates.task_no !== undefined) { fields.push('task_no = ?'); values.push(updates.task_no); }
   if (updates.sort_order !== undefined) { fields.push('sort_order = ?'); values.push(updates.sort_order); }
+  if (updates.phase_id !== undefined) { fields.push('phase_id = ?'); values.push(updates.phase_id); }
   if (updates.status !== undefined) {
     fields.push('status = ?');
     values.push(updates.status);

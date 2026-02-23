@@ -738,12 +738,17 @@ const app = {
   },
 
   // --- Roadmap ---
+  roadmapData: null,
+  roadmapFilterTimer: null,
+
   async loadRoadmap() {
     const id = this.currentProject.id;
     const [roadmap, stats] = await Promise.all([
       this.api(`/projects/${id}/roadmap`),
       this.api(`/projects/${id}/roadmap/stats`)
     ]);
+
+    this.roadmapData = roadmap.data;
 
     // Progress bar
     const progressEl = document.getElementById('roadmapProgress');
@@ -754,14 +759,46 @@ const app = {
       </div>
     `;
 
-    // Phases
+    this.renderRoadmapFiltered();
+  },
+
+  debounceRoadmapFilter() {
+    clearTimeout(this.roadmapFilterTimer);
+    this.roadmapFilterTimer = setTimeout(() => this.applyRoadmapFilters(), 300);
+  },
+
+  applyRoadmapFilters() {
+    this.renderRoadmapFiltered();
+  },
+
+  renderRoadmapFiltered() {
     const el = document.getElementById('roadmapContent');
-    if (!roadmap.data.length) {
+    if (!this.roadmapData || !this.roadmapData.length) {
       el.innerHTML = '<div class="empty-state">Henuz yol haritasi yok. "Yeni Faz" ile baslayin veya XML import edin.</div>';
       return;
     }
 
-    el.innerHTML = roadmap.data.map(phase => `
+    const statusFilter = document.getElementById('roadmapStatusFilter').value;
+    const titleSearch = (document.getElementById('roadmapTitleSearch').value || '').toLowerCase().trim();
+
+    const filtered = this.roadmapData.map(phase => {
+      let tasks = phase.tasks;
+      if (statusFilter) tasks = tasks.filter(t => t.status === statusFilter);
+      if (titleSearch) tasks = tasks.filter(t => t.title.toLowerCase().includes(titleSearch));
+      return { ...phase, tasks };
+    }).filter(phase => {
+      // Show phase if it has matching tasks, or if phase itself matches filters
+      if (statusFilter && phase.tasks.length === 0) return false;
+      if (titleSearch && phase.tasks.length === 0 && !phase.title.toLowerCase().includes(titleSearch)) return false;
+      return true;
+    });
+
+    if (!filtered.length) {
+      el.innerHTML = '<div class="empty-state">Filtreye uyan gorev bulunamadi.</div>';
+      return;
+    }
+
+    el.innerHTML = filtered.map(phase => `
       <div class="phase-card" id="phase-${phase.id}">
         <div class="phase-header" onclick="app.togglePhase(${phase.id})">
           <div class="phase-title-group">
@@ -888,6 +925,19 @@ const app = {
     document.getElementById('taskDetail').value = task ? (task.detail || '') : '';
     document.getElementById('taskRisks').value = task ? (task.risks || '') : '';
     document.getElementById('taskStatus').value = task ? task.status : 'planned';
+
+    // Show phase selector only in edit mode
+    const phaseSelectGroup = document.getElementById('taskPhaseSelectGroup');
+    if (task && this.roadmapData) {
+      const select = document.getElementById('taskPhaseSelect');
+      select.innerHTML = this.roadmapData.map(p =>
+        `<option value="${p.id}" ${p.id === phaseId ? 'selected' : ''}>Faz ${this.esc(p.phase_no)} - ${this.esc(p.title)}</option>`
+      ).join('');
+      phaseSelectGroup.style.display = '';
+    } else {
+      phaseSelectGroup.style.display = 'none';
+    }
+
     document.getElementById('taskModal').classList.add('active');
   },
 
@@ -908,6 +958,11 @@ const app = {
     };
 
     if (id) {
+      // Check if phase changed
+      const newPhaseId = document.getElementById('taskPhaseSelect').value;
+      if (newPhaseId && parseInt(newPhaseId) !== parseInt(phaseId)) {
+        body.phase_id = parseInt(newPhaseId);
+      }
       await this.api(`/tasks/${id}`, { method: 'PUT', body });
     } else {
       body.project_id = this.currentProject.id;

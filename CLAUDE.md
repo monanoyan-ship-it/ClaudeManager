@@ -213,6 +213,11 @@ curl -X PUT http://127.0.0.1:41847/api/tasks/GOREV_ID \
   -H "Content-Type: application/json" \
   -d '{"status":"completed"}'
 
+# Gorevi baska faza tasi
+curl -X PUT http://127.0.0.1:41847/api/tasks/GOREV_ID \
+  -H "Content-Type: application/json" \
+  -d '{"phase_id": YENI_FAZ_ID}'
+
 # XML'den import (callcenter yol_haritasi.xml formati)
 curl -X POST http://127.0.0.1:41847/api/projects/PROJE_ID/roadmap/import \
   -H "Content-Type: application/json" \
@@ -232,7 +237,7 @@ curl -X POST http://127.0.0.1:41847/api/projects/PROJE_ID/roadmap/import \
 
 **Guide entegrasyonu:** `/api/guide?cwd=...` endpoint'i yol haritasi varsa otomatik olarak mevcut faz, ilerleme yuzdesi ve acik gorevleri gosterir.
 
-**Dashboard:** Proje detay sayfasinda "Yol Haritasi" tab'i ile gorev yonetimi, durum degistirme, faz/gorev ekleme ve XML import yapilabilir.
+**Dashboard:** Proje detay sayfasinda "Yol Haritasi" tab'i ile gorev yonetimi, durum degistirme, faz/gorev ekleme, fazlar arasi gorev tasima ve XML import yapilabilir. Durum filtresi ve baslik arama ile gorevler filtrelenebilir.
 
 ## Hook Formati (Claude Code Spesifikasyonu)
 
