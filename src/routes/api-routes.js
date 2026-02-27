@@ -442,6 +442,14 @@ router.get('/projects/:id/roadmap', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/projects/:id/roadmap/summary — Phase headers + task summaries (no detail/risks)
+router.get('/projects/:id/roadmap/summary', async (req, res, next) => {
+  try {
+    const summary = await planService.getRoadmapSummary(parseInt(req.params.id));
+    res.json({ data: summary });
+  } catch (err) { next(err); }
+});
+
 // GET /api/projects/:id/roadmap/stats — Roadmap statistics
 router.get('/projects/:id/roadmap/stats', async (req, res, next) => {
   try {

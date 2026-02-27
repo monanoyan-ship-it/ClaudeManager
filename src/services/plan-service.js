@@ -160,6 +160,34 @@ async function deleteTask(taskId) {
 
 // --- Roadmap ---
 
+async function getRoadmapSummary(projectId) {
+  const phases = await getPhases(projectId);
+  if (!phases.length) return [];
+
+  const db = await getDb();
+  const tasksResult = await db.exec(`
+    SELECT id, phase_id, task_no, title, status
+    FROM tasks WHERE project_id = ?
+    ORDER BY sort_order, task_no
+  `, [projectId]);
+
+  const tasksByPhase = {};
+  if (tasksResult.length) {
+    for (const r of tasksResult[0].values) {
+      const phaseId = r[1];
+      if (!tasksByPhase[phaseId]) tasksByPhase[phaseId] = [];
+      tasksByPhase[phaseId].push({
+        id: r[0], task_no: r[2], title: r[3], status: r[4]
+      });
+    }
+  }
+
+  return phases.map(p => ({
+    ...p,
+    tasks: tasksByPhase[p.id] || []
+  }));
+}
+
 async function getRoadmap(projectId) {
   const phases = await getPhases(projectId);
   const result = [];
@@ -291,6 +319,7 @@ module.exports = {
   createTask,
   updateTask,
   deleteTask,
+  getRoadmapSummary,
   getRoadmap,
   getRoadmapStats,
   importFromXml
