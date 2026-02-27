@@ -628,7 +628,10 @@ router.get('/guide', async (req, res, next) => {
       lines.push('Analitik veriler:');
       lines.push(`  curl -s ${base}/api/projects/${projectId}/analytics`);
       lines.push('');
-      lines.push('Yol haritasi oku:');
+      lines.push('Yol haritasi ozet (faz basliklari + gorev listesi, detaysiz — ONCE BUNU KULLAN):');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/roadmap/summary`);
+      lines.push('');
+      lines.push('Yol haritasi tam detay (detail + risks dahil, sadece gerektiginde):');
       lines.push(`  curl -s ${base}/api/projects/${projectId}/roadmap`);
       lines.push('');
       lines.push('Gorev ekle:');
