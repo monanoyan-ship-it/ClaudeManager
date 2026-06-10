@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chat Live Feed</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', -apple-system, sans-serif; background: #0f0f17; color: #e2e8f0; }
+    .header { background: #16162a; border-bottom: 1px solid #2d2d4a; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .header h1 span { background: linear-gradient(135deg, #818cf8, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .feed { max-width: 900px; margin: 0 auto; padding: 16px; }
+    .msg { background: #16162a; border: 1px solid #1e1e35; border-radius: 12px; padding: 16px; margin-bottom: 12px; animation: slideIn 0.3s ease-out; transition: border-color 0.2s; }
+    .msg:hover { border-color: #3d3d5c; }
+    .msg.new { border-color: #6366f1; box-shadow: 0 0 20px rgba(99,102,241,0.1); }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .msg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .msg-meta { display: flex; align-items: center; gap: 8px; }
+    .role-badge { padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .role-a { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .role-b { background: rgba(16,185,129,0.15); color: #10b981; }
+    .project-tag { font-size: 11px; color: #64748b; background: rgba(100,116,139,0.1); padding: 2px 8px; border-radius: 4px; }
+    .chat-tag { font-size: 11px; color: #94a3b8; }
+    .msg-time { font-size: 11px; color: #475569; }
+    .msg-content { font-size: 14px; line-height: 1.6; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow: hidden; position: relative; }
+    .msg-content.expanded { max-height: none; }
+    .msg-content.truncated::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(transparent, #16162a); }
+    .expand-btn { background: none; border: none; color: #818cf8; font-size: 12px; cursor: pointer; margin-top: 4px; padding: 4px 0; }
+    .expand-btn:hover { text-decoration: underline; }
+    .reply-to { font-size: 11px; color: #64748b; margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #2d2d4a; }
+    .turn-num { font-size: 11px; color: #475569; font-weight: 600; }
+    .empty { text-align: center; padding: 80px 20px; color: #475569; }
+    .empty h2 { font-size: 20px; margin-bottom: 8px; color: #64748b; }
+    .filter-bar { max-width: 900px; margin: 12px auto 0; padding: 0 16px; display: flex; gap: 8px; }
+    .filter-bar select { background: #16162a; color: #94a3b8; border: 1px solid #2d2d4a; padding: 6px 12px; border-radius: 8px; font-size: 12px; outline: none; }
+    .filter-bar select:focus { border-color: #6366f1; }
+    .msg-count { font-size: 12px; color: #475569; margin-left: auto; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span>AI Chat</span> Live Feed</h1>
+    <div class="status">
+      <div class="dot"></div>
+      <span id="pollStatus">Canli</span>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <select id="filterProject">
+      <option value="">Tum Projeler</option>
+    </select>
+    <select id="filterChat">
+      <option value="">Tum Chatler</option>
+    </select>
+    <select id="filterRole">
+      <option value="">Tum Roller</option>
+      <option value="a">Sadece A</option>
+      <option value="b">Sadece B</option>
+    </select>
+    <span class="msg-count" id="msgCount"></span>
+  </div>
+
+  <div class="feed" id="feed"></div>
+
+  <script>
+    const API = window.location.origin;
+    let lastMessageId = 0;
+    let allMessages = [];
+
+    async function fetchFeed() {
+      try {
+        const res = await fetch(`${API}/api/ai-chat-feed?limit=100`);
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          const newMsgs = data.messages.filter(m => m.id > lastMessageId);
+          if (newMsgs.length > 0) {
+            allMessages = data.messages;
+            lastMessageId = Math.max(...data.messages.map(m => m.id));
+            renderFeed(newMsgs.map(m => m.id));
+            updateFilters();
+          }
+        }
+        document.getElementById('pollStatus').textContent = 'Canli';
+      } catch (e) {
+        document.getElementById('pollStatus').textContent = 'Baglanti hatasi';
+      }
+    }
+
+    function renderFeed(newIds = []) {
+      const feed = document.getElementById('feed');
+      const filterProject = document.getElementById('filterProject').value;
+      const filterChat = document.getElementById('filterChat').value;
+      const filterRole = document.getElementById('filterRole').value;
+
+      let filtered = allMessages;
+      if (filterProject) filtered = filtered.filter(m => String(m.project_id) === filterProject);
+      if (filterChat) filtered = filtered.filter(m => String(m.chat_id) === filterChat);
+      if (filterRole) filtered = filtered.filter(m => m.role === filterRole);
+
+      document.getElementById('msgCount').textContent = `${filtered.length} mesaj`;
+
+      if (filtered.length === 0) {
+        feed.innerHTML = '<div class="empty"><h2>Henuz mesaj yok</h2><p>AI chatler basladiginda burada gorunecek</p></div>';
+        return;
+      }
+
+      feed.innerHTML = filtered.map(m => {
+        const isNew = newIds.includes(m.id);
+        const time = new Date(m.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const date = new Date(m.created_at).toLocaleDateString('tr-TR');
+        const content = m.content || '';
+        const isTruncated = content.length > 500;
+        const displayContent = isTruncated ? content.substring(0, 500) + '...' : content;
+
+        return `<div class="msg ${isNew ? 'new' : ''}">
+          <div class="msg-header">
+            <div class="msg-meta">
+              <span class="turn-num">#${m.turn_number}</span>
+              <span class="role-badge role-${m.role}">${m.role_name || m.role}</span>
+              <span class="project-tag">${m.project_name || 'Proje ' + m.project_id}</span>
+              <span class="chat-tag">Chat ${m.chat_id}: ${(m.chat_topic || '').substring(0, 40)}</span>
+            </div>
+            <span class="msg-time">${date} ${time}</span>
+          </div>
+          ${m.reply_to ? `<div class="reply-to">↩ Turn ${m.reply_to} e cevap</div>` : ''}
+          <div class="msg-content ${isTruncated ? 'truncated' : ''}" id="content-${m.id}">${escapeHtml(displayContent)}</div>
+          ${isTruncated ? `<button class="expand-btn" onclick="toggleExpand(${m.id}, ${JSON.stringify(content).replace(/"/g, '&quot;')})">Devamini goster</button>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      return fixEncoding(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Fix double-encoded UTF-8 Turkish characters
+    function fixEncoding(str) {
+      const map = {
+        'Ã§': 'ç', 'Ã¶': 'ö', 'Ã¼': 'ü', 'Ä±': 'ı', 'ÅŸ': 'ş', 'ÄŸ': 'ğ',
+        'Ã‡': 'Ç', 'Ã–': 'Ö', 'Ãœ': 'Ü', 'Ä°': 'İ', 'Åž': 'Ş', 'Äž': 'Ğ',
+        'Ã¤': 'ä', 'Ã¥': 'å', 'Ã©': 'é', 'Ã±': 'ñ', 'Ã¢': 'â',
+        'Ã®': 'î', 'Ã´': 'ô', 'Ã»': 'û', 'Ã¨': 'è', 'Ãª': 'ê',
+        'â€™': "'", 'â€œ': '"', 'â€\x9d': '"', 'â€"': '–', 'â€"': '—',
+        'Â±': '±', 'Â½': '½'
+      };
+      let result = str;
+      for (const [garbled, correct] of Object.entries(map)) {
+        result = result.split(garbled).join(correct);
+      }
+      return result;
+    }
+
+    function toggleExpand(id, fullContent) {
+      const el = document.getElementById('content-' + id);
+      if (el.classList.contains('truncated')) {
+        el.classList.remove('truncated');
+        el.classList.add('expanded');
+        el.textContent = fullContent;
+        el.nextElementSibling.textContent = 'Daralt';
+      } else {
+        el.classList.add('truncated');
+        el.classList.remove('expanded');
+        el.textContent = fullContent.substring(0, 500) + '...';
+        el.nextElementSibling.textContent = 'Devamini goster';
+      }
+    }
+
+    function updateFilters() {
+      const projects = [...new Set(allMessages.map(m => m.project_id))];
+      const chats = [...new Set(allMessages.map(m => m.chat_id))];
+
+      const pSelect = document.getElementById('filterProject');
+      const currentP = pSelect.value;
+      pSelect.innerHTML = '<option value="">Tum Projeler</option>' +
+        projects.map(p => {
+          const name = allMessages.find(m => m.project_id === p)?.project_name || 'Proje ' + p;
+          return `<option value="${p}">${name}</option>`;
+        }).join('');
+      pSelect.value = currentP;
+
+      const cSelect = document.getElementById('filterChat');
+      const currentC = cSelect.value;
+      cSelect.innerHTML = '<option value="">Tum Chatler</option>' +
+        chats.map(c => {
+          const topic = allMessages.find(m => m.chat_id === c)?.chat_topic || '';
+          return `<option value="${c}">Chat ${c}: ${topic.substring(0, 30)}</option>`;
+        }).join('');
+      cSelect.value = currentC;
+    }
+
+    // Re-render on filter change
+    document.getElementById('filterProject').addEventListener('change', () => renderFeed());
+    document.getElementById('filterChat').addEventListener('change', () => renderFeed());
+    document.getElementById('filterRole').addEventListener('change', () => renderFeed());
+
+    // Poll every 3 seconds
+    fetchFeed();
+    setInterval(fetchFeed, 3000);
+  </script>
+</body>
+</html>

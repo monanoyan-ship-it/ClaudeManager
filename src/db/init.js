@@ -10,6 +10,7 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'claude_manager',
   user: process.env.DB_USER || 'claude_manager',
   password: process.env.DB_PASSWORD || '1123Azs+-',
+  client_encoding: 'UTF8',
 });
 
 // SQL compatibility: translate SQLite syntax to PostgreSQL

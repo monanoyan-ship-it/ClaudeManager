@@ -1,9 +1,30 @@
 const express = require('express');
 const logService = require('./services/log-service');
 const contextService = require('./services/context-service');
+const chatService = require('./services/chat-service');
 const { normalizePath } = require('./utils/path-normalizer');
 
 const router = express.Router();
+
+// Chat ID 8 coordination check
+async function getChatContext() {
+  try {
+    const CHAT_ID = 8;
+    const parts = [];
+    // Check unread for both roles
+    for (const role of ['a', 'b']) {
+      const msgs = await chatService.getUnreadMessages(CHAT_ID, role);
+      if (msgs.length > 0) {
+        parts.push(`[ManagerChat] ${msgs.length} okunmamis mesaj (role ${role}):`);
+        for (const m of msgs.slice(-3)) {
+          const preview = (m.content || '').substring(0, 200);
+          parts.push(`  [${m.role}] ${preview}`);
+        }
+      }
+    }
+    return parts;
+  } catch { return []; }
+}
 
 // Helper: extract project info from cwd
 function extractProjectInfo(body) {
@@ -59,6 +80,10 @@ router.post('/prompt', async (req, res) => {
         if (t.risks) contextParts.push(`    Risks: ${t.risks.substring(0, 200)}`);
       }
     }
+
+    // Add chat coordination context
+    const chatParts = await getChatContext();
+    contextParts.push(...chatParts);
 
     // Return in Claude Code hook output format
     const response = { continue: true };
@@ -128,11 +153,15 @@ router.post('/session-start', async (req, res) => {
     const context = await contextService.getProjectContext(project.name, project.path);
     const formatted = contextService.formatContextForClaude(context);
 
+    // Add chat coordination context
+    const chatParts = await getChatContext();
+
     const response = { continue: true };
-    if (formatted.trim()) {
+    const allContext = [formatted.trim(), ...chatParts].filter(Boolean).join('\n');
+    if (allContext) {
       response.hookSpecificOutput = {
         hookEventName: 'SessionStart',
-        additionalContext: formatted
+        additionalContext: allContext
       };
     }
 

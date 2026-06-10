@@ -109,6 +109,47 @@ CREATE TABLE IF NOT EXISTS journal (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Versions (changelog / release tracking)
+CREATE TABLE IF NOT EXISTS versions (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id),
+  version TEXT NOT NULL,
+  title TEXT NOT NULL,
+  changes TEXT,
+  released_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Chat conversations
+CREATE TABLE IF NOT EXISTS ai_chats (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id),
+  topic TEXT NOT NULL,
+  role_a TEXT NOT NULL DEFAULT 'AI-A',
+  role_b TEXT NOT NULL DEFAULT 'AI-B',
+  system_a TEXT,
+  system_b TEXT,
+  summary TEXT,
+  status TEXT DEFAULT 'active',
+  max_turns INTEGER DEFAULT 100,
+  turn_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Chat messages
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id SERIAL PRIMARY KEY,
+  chat_id INTEGER REFERENCES ai_chats(id),
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  turn_number INTEGER NOT NULL,
+  reply_to INTEGER DEFAULT NULL,
+  read_by_a INTEGER DEFAULT 0,
+  read_by_b INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
@@ -125,3 +166,16 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id);
 CREATE INDEX IF NOT EXISTS idx_journal_project ON journal(project_id);
 CREATE INDEX IF NOT EXISTS idx_journal_date ON journal(entry_date);
+CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_versions_version ON versions(version);
+CREATE INDEX IF NOT EXISTS idx_ai_chats_project ON ai_chats(project_id);
+CREATE INDEX IF NOT EXISTS idx_ai_chats_status ON ai_chats(status);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_chat ON ai_messages(chat_id);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_turn ON ai_messages(chat_id, turn_number);
+
+-- Migration: add read tracking columns to existing ai_messages tables
+ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS reply_to INTEGER DEFAULT NULL;
+ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS read_by_a INTEGER DEFAULT 0;
+ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS read_by_b INTEGER DEFAULT 0;
+ALTER TABLE ai_chats ADD COLUMN IF NOT EXISTS archive_vote_a INTEGER DEFAULT 0;
+ALTER TABLE ai_chats ADD COLUMN IF NOT EXISTS archive_vote_b INTEGER DEFAULT 0

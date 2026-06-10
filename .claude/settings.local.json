@@ -56,7 +56,17 @@
       "Bash(powershell.exe -Command \"Start-Process -FilePath ''node'' -ArgumentList ''src/index.js'' -WorkingDirectory ''C:\\\\Users\\\\Ahmet\\\\source\\\\repos\\\\monanoyan-ship-it\\\\ClaudeManager'' -WindowStyle Hidden\")",
       "Bash(schtasks:*)",
       "Bash(cmd //c \"dir \"\"%APPDATA%\\\\Microsoft\\\\Windows\\\\Start Menu\\\\Programs\\\\Startup\"\"\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "WebFetch(domain:www.linkedin.com)",
+      "Bash(tree /c/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager -L 3 -I 'node_modules' 2>/dev/null || find /c/Users/Ahmet/source/repos/monanoyan-ship-it/ClaudeManager -type d ! -path \"*/node_modules*\" | sort)",
+      "Bash(PGPASSWORD='1123Azs+-' psql -U claude_manager -d claude_manager -c \"ALTER TABLE ai_chats ADD COLUMN IF NOT EXISTS summary TEXT;\")",
+      "Bash(wmic process:*)",
+      "PowerShell($env:PGPASSWORD='1123Azs+-'; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U claude_manager -d claude_manager -c \"\\\\dt\")",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(Start-Service *)",
+      "PowerShell(Get-Service *)",
+      "PowerShell(try { Start-Process powershell -Verb RunAs -ArgumentList '-Command','Start-Service postgresql-x64-17' -Wait -ErrorAction Stop; \"ok\" } catch { \"err: $\\($_.Exception.Message\\)\" })"
     ]
   }
 }

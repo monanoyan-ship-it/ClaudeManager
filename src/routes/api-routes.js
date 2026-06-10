@@ -7,6 +7,8 @@ const searchService = require('../services/search-service');
 const planService = require('../services/plan-service');
 const noteService = require('../services/note-service');
 const journalService = require('../services/journal-service');
+const versionService = require('../services/version-service');
+const chatService = require('../services/chat-service');
 const { normalizePath } = require('../utils/path-normalizer');
 
 const router = express.Router();
@@ -30,6 +32,31 @@ router.get('/projects', async (req, res, next) => {
       pattern_count: row[6], tool_count: row[7]
     }));
     res.json({ data });
+  } catch (err) { next(err); }
+});
+
+// POST /api/projects — Explicit project registration (bypasses parent matching)
+router.post('/projects', async (req, res, next) => {
+  try {
+    const { name, path: projectPath, description } = req.body;
+    if (!projectPath) return res.status(400).json({ error: 'path required' });
+    const db = await getDb();
+    const normalized = normalizePath(projectPath);
+    const projectName = name || normalized.split('/').pop();
+
+    // Check exact match first
+    const existing = await db.exec('SELECT id, name, path FROM projects WHERE path = ?', [normalized]);
+    if (existing.length && existing[0].values.length) {
+      const row = existing[0].values[0];
+      return res.json({ id: row[0], name: row[1], path: row[2], existing: true });
+    }
+
+    // Force create — even if parent exists
+    await db.run('INSERT INTO projects (name, path, description) VALUES (?, ?, ?)',
+      [projectName, normalized, description || null]);
+    const idResult = await db.exec('SELECT last_insert_rowid()');
+    const id = idResult[0].values[0][0];
+    res.status(201).json({ id, name: projectName, path: normalized, created: true });
   } catch (err) { next(err); }
 });
 
@@ -130,12 +157,18 @@ router.delete('/projects/:id', async (req, res, next) => {
     const pCount = patternCount.length ? patternCount[0].values[0][0] : 0;
 
     // Delete related data
+    await db.run('DELETE FROM ai_messages WHERE chat_id IN (SELECT id FROM ai_chats WHERE project_id = ?)', [projectId]);
+    await db.run('DELETE FROM ai_chats WHERE project_id = ?', [projectId]);
+    await db.run('DELETE FROM versions WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM journal WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM project_notes WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM tasks WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM phases WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM tool_uses WHERE project_id = ?', [projectId]);
     await db.run('DELETE FROM prompts WHERE project_id = ?', [projectId]);
+    // Detach cross-project references: other projects' data referencing this project's sessions
+    await db.run('UPDATE tool_uses SET session_id = NULL WHERE project_id != ? AND session_id IN (SELECT id FROM sessions WHERE project_id = ?)', [projectId, projectId]);
+    await db.run('UPDATE prompts SET session_id = NULL WHERE project_id != ? AND session_id IN (SELECT id FROM sessions WHERE project_id = ?)', [projectId, projectId]);
     await db.run('DELETE FROM sessions WHERE project_id = ?', [projectId]);
 
     if (deletePatterns) {
@@ -166,7 +199,7 @@ router.post('/projects/merge', async (req, res, next) => {
     }
 
     const db = await getDb();
-    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks', 'project_notes', 'journal'];
+    const tables = ['sessions', 'prompts', 'tool_uses', 'patterns', 'phases', 'tasks', 'project_notes', 'journal', 'versions'];
     const moved = {};
 
     for (const sourceId of source_ids) {
@@ -535,6 +568,241 @@ router.post('/projects/:id/roadmap/import', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// --- Version Endpoints ---
+
+// GET /api/projects/:id/versions — Versions for project
+router.get('/projects/:id/versions', async (req, res, next) => {
+  try {
+    const versions = await versionService.getVersions(parseInt(req.params.id));
+    res.json({ data: versions });
+  } catch (err) { next(err); }
+});
+
+// GET /api/projects/:id/versions/latest — Latest version
+router.get('/projects/:id/versions/latest', async (req, res, next) => {
+  try {
+    const version = await versionService.getLatestVersion(parseInt(req.params.id));
+    if (!version) return res.status(404).json({ error: 'No versions found' });
+    res.json(version);
+  } catch (err) { next(err); }
+});
+
+// POST /api/projects/:id/versions — Create new version
+router.post('/projects/:id/versions', async (req, res, next) => {
+  try {
+    const { version, title, changes, released_at } = req.body;
+    if (!version || !title) {
+      return res.status(400).json({ error: 'version and title are required' });
+    }
+    const id = await versionService.createVersion(
+      parseInt(req.params.id), version, title, changes, released_at
+    );
+    const created = await versionService.getVersionById(id);
+    res.status(201).json(created);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/versions/:id — Update version
+router.put('/versions/:id', async (req, res, next) => {
+  try {
+    await versionService.updateVersion(parseInt(req.params.id), req.body);
+    const version = await versionService.getVersionById(parseInt(req.params.id));
+    res.json(version);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/versions/:id — Delete version
+router.delete('/versions/:id', async (req, res, next) => {
+  try {
+    await versionService.deleteVersion(parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// --- AI Chat Endpoints ---
+
+// POST /api/ai-chat — Create a new AI conversation
+router.post('/ai-chat', async (req, res, next) => {
+  try {
+    const { project_id, topic, role_a, role_b, system_a, system_b, max_turns } = req.body;
+    if (!topic) {
+      return res.status(400).json({ error: 'topic is required' });
+    }
+    const id = await chatService.createChat(project_id, topic, role_a, role_b, system_a, system_b, max_turns);
+    const chat = await chatService.getChatById(id);
+    res.status(201).json(chat);
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chats — List all AI conversations (optionally filter by status)
+router.get('/ai-chats', async (req, res, next) => {
+  try {
+    const status = req.query.status || null;
+    const chats = await chatService.getChats(null, status);
+    res.json({ data: chats });
+  } catch (err) { next(err); }
+});
+
+// GET /api/projects/:id/ai-chats — List AI conversations for a project
+router.get('/projects/:id/ai-chats', async (req, res, next) => {
+  try {
+    const status = req.query.status || null;
+    const chats = await chatService.getChats(parseInt(req.params.id), status);
+    res.json({ data: chats });
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chat/:id — Get chat with messages
+router.get('/ai-chat/:id', async (req, res, next) => {
+  try {
+    const chat = await chatService.getChatById(parseInt(req.params.id));
+    if (!chat) return res.status(404).json({ error: 'Chat not found' });
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const messages = await chatService.getMessages(chat.id, limit, offset);
+    res.json({ ...chat, messages });
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai-chat/:id/message — Post a message (from one AI)
+// Body: { role: "a"|"b", content: "mesaj", summary?: "guncel ozet" }
+// No strict turn order — either role can post anytime
+router.post('/ai-chat/:id/message', async (req, res, next) => {
+  try {
+    const { role, content, summary, reply_to } = req.body;
+    if (!role || !content) {
+      return res.status(400).json({ error: 'role (a/b) and content are required' });
+    }
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    const result = await chatService.postMessage(parseInt(req.params.id), role, content, summary || null, reply_to || null);
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('Max turns') || err.message.includes('Chat is')) {
+      return res.status(409).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// POST /api/ai-chat/:id/read/:role — Mark all messages from other role as read
+router.post('/ai-chat/:id/read/:role', async (req, res, next) => {
+  try {
+    const role = req.params.role;
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    await chatService.markAsRead(parseInt(req.params.id), role);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chat/:id/unread/:role — Get unread messages for this role
+router.get('/ai-chat/:id/unread/:role', async (req, res, next) => {
+  try {
+    const role = req.params.role;
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    const messages = await chatService.getUnreadMessages(parseInt(req.params.id), role);
+    res.json({ unread_count: messages.length, messages });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/ai-chat/:id/summary — Update chat summary
+router.put('/ai-chat/:id/summary', async (req, res, next) => {
+  try {
+    const { summary } = req.body;
+    if (!summary) {
+      return res.status(400).json({ error: 'summary is required' });
+    }
+    await chatService.updateSummary(parseInt(req.params.id), summary);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chat/:id/next/:role — Check if it's this role's turn (instant)
+router.get('/ai-chat/:id/next/:role', async (req, res, next) => {
+  try {
+    const role = req.params.role;
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    const result = await chatService.getNextTurn(parseInt(req.params.id), role);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chat/:id/wait/:role — Long-poll: wait until it's this role's turn
+router.get('/ai-chat/:id/wait/:role', async (req, res, next) => {
+  try {
+    const role = req.params.role;
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    const timeout = Math.min(parseInt(req.query.timeout) || 30000, 60000);
+    const result = await chatService.waitForTurn(parseInt(req.params.id), role, timeout);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai-chat/:id/stop — Stop the conversation
+router.post('/ai-chat/:id/stop', async (req, res, next) => {
+  try {
+    await chatService.updateStatus(parseInt(req.params.id), 'stopped');
+    const chat = await chatService.getChatById(parseInt(req.params.id));
+    res.json(chat);
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai-chat/:id/resume — Resume a stopped conversation
+router.post('/ai-chat/:id/resume', async (req, res, next) => {
+  try {
+    await chatService.updateStatus(parseInt(req.params.id), 'active');
+    const chat = await chatService.getChatById(parseInt(req.params.id));
+    res.json(chat);
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai-chat/:id/archive/:role — Propose archive (both must agree)
+router.post('/ai-chat/:id/archive/:role', async (req, res, next) => {
+  try {
+    const role = req.params.role;
+    if (!['a', 'b'].includes(role)) {
+      return res.status(400).json({ error: 'role must be "a" or "b"' });
+    }
+    const { summary } = req.body || {};
+    const result = await chatService.proposeArchive(parseInt(req.params.id), role, summary || null);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai-chat/:id/continue — Continue an archived chat
+router.post('/ai-chat/:id/continue', async (req, res, next) => {
+  try {
+    const result = await chatService.continueChat(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// GET /api/ai-chat/feed — Live feed of all recent messages across all chats
+router.get('/ai-chat-feed', async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const messages = await chatService.getLiveFeed(limit);
+    res.json({ messages });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/ai-chat/:id — Delete chat and messages
+router.delete('/ai-chat/:id', async (req, res, next) => {
+  try {
+    await chatService.deleteChat(parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/guide — Self-contained guide for Claude Code
 // Claude can curl this to learn how to use the API for the current project
 router.get('/guide', async (req, res, next) => {
@@ -546,7 +814,28 @@ router.get('/guide', async (req, res, next) => {
 
     if (cwd) {
       const normalizedCwd = normalizePath(cwd);
-      const result = await db.exec('SELECT id, name, path FROM projects WHERE path = ?', [normalizedCwd]);
+      // 1. Exact match
+      let result = await db.exec('SELECT id, name, path FROM projects WHERE path = ?', [normalizedCwd]);
+      // 2. Parent project match — subdirectory of a registered project (max 3 levels)
+      if (!result.length || !result[0].values.length) {
+        const parents = await db.exec(
+          `SELECT id, name, path FROM projects WHERE ? LIKE path || '/%' ORDER BY LENGTH(path) DESC`,
+          [normalizedCwd]
+        );
+        if (parents.length && parents[0].values.length) {
+          for (const row of parents[0].values) {
+            const remaining = normalizedCwd.substring(row[2].length);
+            const depth = (remaining.match(/\//g) || []).length;
+            if (depth <= 3) { result = { 0: { values: [row] }, length: 1 }; break; }
+          }
+        }
+      }
+      // 3. Auto-register — new project from cwd
+      if (!result.length || !result[0].values.length) {
+        const projectName = normalizedCwd.split('/').pop();
+        const newId = await logService.ensureProject(projectName, normalizedCwd);
+        result = await db.exec('SELECT id, name, path FROM projects WHERE id = ?', [newId]);
+      }
       if (result.length && result[0].values.length) {
         const row = result[0].values[0];
         project = { id: row[0], name: row[1], path: row[2] };
@@ -651,10 +940,62 @@ router.get('/guide', async (req, res, next) => {
       lines.push('');
       lines.push('Yeni not olustur:');
       lines.push(`  curl -X POST ${base}/api/projects/${projectId}/notes -H "Content-Type: application/json" -d '{"title":"BASLIK","content":"ICERIK","category":"teknik"}'`);
-    } else {
-      lines.push('## Proje Bulunamadi');
       lines.push('');
-      lines.push('Bu proje henuz ClaudeManager\'da kayitli degil. Ilk session\'da otomatik kaydedilecek.');
+      lines.push('Versiyonlari oku (changelog):');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/versions`);
+      lines.push('');
+      lines.push('Son versiyon:');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/versions/latest`);
+      lines.push('');
+      lines.push('Yeni versiyon kaydet:');
+      lines.push(`  curl -X POST ${base}/api/projects/${projectId}/versions -H "Content-Type: application/json" -d '{"version":"1.0.0","title":"BASLIK","changes":"- degisiklik1\\n- degisiklik2","released_at":"2025-01-01T00:00:00Z"}'`);
+      lines.push('');
+      lines.push('## AI Chat (2 AI arasi sohbet)');
+      lines.push('Iki AI in karsilikli konusabilecegi relay sistemi. Read/unread bazli, summary destekli.');
+      lines.push('Sira sistemi YOK - her iki rol de istediginde mesaj atabilir.');
+      lines.push('Okunmamis mesaj varsa your_turn=true doner.');
+      lines.push('');
+      lines.push('Yeni sohbet baslat:');
+      lines.push(`  curl -X POST ${base}/api/ai-chat -H "Content-Type: application/json" -d '{"project_id":${projectId},"topic":"KONU","role_a":"ROL_A","role_b":"ROL_B","system_a":"SYSTEM_PROMPT_A","system_b":"SYSTEM_PROMPT_B","max_turns":50}'`);
+      lines.push('');
+      lines.push('Bu projenin sohbetlerini listele:');
+      lines.push(`  curl -s ${base}/api/projects/${projectId}/ai-chats`);
+      lines.push('');
+      lines.push('Okunmamis mesajlari kontrol et (a veya b):');
+      lines.push(`  curl -s ${base}/api/ai-chat/CHAT_ID/next/a`);
+      lines.push('  Doner: {your_turn, unread_count, respond_to, summary, system_prompt, turns_remaining}');
+      lines.push('');
+      lines.push('Okunmamis mesajlari getir:');
+      lines.push(`  curl -s ${base}/api/ai-chat/CHAT_ID/unread/a`);
+      lines.push('  Doner: {unread_count, messages: [...]}');
+      lines.push('');
+      lines.push('Mesajlari okundu olarak isaretle:');
+      lines.push(`  curl -X POST ${base}/api/ai-chat/CHAT_ID/read/a`);
+      lines.push('');
+      lines.push('Okunmamis mesaj gelene kadar bekle (long-poll, max 30sn):');
+      lines.push(`  curl -s ${base}/api/ai-chat/CHAT_ID/wait/a`);
+      lines.push('');
+      lines.push('Mesaj at (sira beklemeden, istediginde):');
+      lines.push(`  curl -X POST ${base}/api/ai-chat/CHAT_ID/message -H "Content-Type: application/json" -d '{"role":"a","content":"MESAJ","summary":"GUNCEL_OZET"}'`);
+      lines.push('');
+      lines.push('Ozet guncelle (ayri):');
+      lines.push(`  curl -X PUT ${base}/api/ai-chat/CHAT_ID/summary -H "Content-Type: application/json" -d '{"summary":"GUNCEL_OZET"}'`);
+      lines.push('');
+      lines.push('Sohbet detay + tum mesajlar:');
+      lines.push(`  curl -s ${base}/api/ai-chat/CHAT_ID`);
+      lines.push('');
+      lines.push('Durdur / devam ettir / sil:');
+      lines.push(`  curl -X POST ${base}/api/ai-chat/CHAT_ID/stop`);
+      lines.push(`  curl -X POST ${base}/api/ai-chat/CHAT_ID/resume`);
+      lines.push(`  curl -X DELETE ${base}/api/ai-chat/CHAT_ID`);
+      lines.push('');
+      lines.push('Read/Unread sistemi: Mesaj attiginizda karsi tarafin unread sayisi artar. /next endpoint i unread mesaj varsa your_turn=true doner.');
+      lines.push('Summary: Her mesajda summary gonderirsen, diger AI mesajlari kontrol ettiginde sadece summary + okunmamis mesajlari gorur.');
+    } else {
+      lines.push('## Proje Tanimlanmadi');
+      lines.push('');
+      lines.push('cwd parametresi verilmedi. Kullanim:');
+      lines.push(`  curl -s "${base}/api/guide?cwd=$(pwd)"`);
       lines.push('');
       lines.push('Tum projeleri gor:');
       lines.push(`  curl -s ${base}/api/projects`);

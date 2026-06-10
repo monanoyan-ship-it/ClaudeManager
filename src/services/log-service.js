@@ -6,10 +6,27 @@ class LogService {
   async ensureProject(name, projectPath) {
     const db = await getDb();
     const normalizedPath = normalizePath(projectPath);
+
+    // 1. Exact match
     const existing = await db.exec(`SELECT id FROM projects WHERE path = ?`, [normalizedPath]);
     if (existing.length > 0 && existing[0].values.length > 0) {
       return existing[0].values[0][0];
     }
+
+    // 2. Parent project match — don't create new project for subdirectories
+    const parents = await db.exec(
+      `SELECT id, path FROM projects WHERE ? LIKE path || '/%' ORDER BY LENGTH(path) DESC`,
+      [normalizedPath]
+    );
+    if (parents.length > 0 && parents[0].values.length > 0) {
+      for (const row of parents[0].values) {
+        const remaining = normalizedPath.substring(row[1].length);
+        const depth = (remaining.match(/\//g) || []).length;
+        if (depth <= 3) return row[0]; // max 3 seviye derinlik
+      }
+    }
+
+    // 3. No match — create new project
     await db.run(`INSERT INTO projects (name, path) VALUES (?, ?)`, [name, normalizedPath]);
     const result = await db.exec(`SELECT last_insert_rowid()`);
     return result[0].values[0][0];
